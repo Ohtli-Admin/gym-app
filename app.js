@@ -635,11 +635,48 @@ async function renderRegistro() {
   const guardadasPorNumero = {};
   for (const s of seriesGuardadas || []) guardadasPorNumero[s.numero_serie] = s;
 
+  // ---- Sugerencia de peso, basada en tu RIR de la última sesión (no hoy) ----
+  const sugerencia = await sugerirProgresion(ej.ejercicio_id, userId, hoy);
+  if (sugerencia) {
+    const cont = document.getElementById('reg-guia');
+    cont.insertAdjacentHTML('beforebegin', `<div class="mensaje info">💡 ${sugerencia.texto}</div>`);
+  }
+
   const numSeries = ej.series || 3;
-  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero);
+  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null);
 }
 
-function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero) {
+async function sugerirProgresion(ejercicioId, userId, hoyStr) {
+  const { data } = await supabase
+    .from('series_registradas')
+    .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)')
+    .eq('ejercicio_id', ejercicioId)
+    .eq('sesiones_entrenamiento.usuario_id', userId)
+    .not('peso_kg', 'is', null)
+    .neq('sesiones_entrenamiento.fecha', hoyStr);
+
+  if (!data || data.length === 0) return null;
+
+  const ultimaFecha = data.reduce((max, s) => (s.sesiones_entrenamiento.fecha > max ? s.sesiones_entrenamiento.fecha : max), '');
+  const seriesUltimaVez = data.filter((s) => s.sesiones_entrenamiento.fecha === ultimaFecha);
+  const pesoMax = Math.max(...seriesUltimaVez.map((s) => s.peso_kg));
+  const rirsValidos = seriesUltimaVez.map((s) => s.rir).filter((r) => r != null);
+  const rirPromedio = rirsValidos.length ? rirsValidos.reduce((a, b) => a + b, 0) / rirsValidos.length : null;
+
+  if (rirPromedio == null) {
+    return { peso: pesoMax, texto: `Sugerido: continúa con ${pesoMax}kg (igual que tu última vez).` };
+  }
+  if (rirPromedio <= 1) {
+    return { peso: pesoMax, texto: `Sugerido: mantén ${pesoMax}kg — la última vez fuiste cerca del fallo (RIR ${rirPromedio.toFixed(1)}).` };
+  }
+  if (rirPromedio >= 3) {
+    const nuevoPeso = Math.round((pesoMax + 2.5) * 2) / 2;
+    return { peso: nuevoPeso, texto: `Sugerido: sube a ${nuevoPeso}kg — la última vez te sobró margen (RIR ${rirPromedio.toFixed(1)}).` };
+  }
+  return { peso: pesoMax, texto: `Sugerido: continúa con ${pesoMax}kg (igual que tu última vez).` };
+}
+
+function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero, pesoSugerido) {
   const tabla = document.getElementById('reg-tabla');
   tabla.innerHTML = `
     <div class="fila-encabezado"><span></span><span>Kg</span><span>Reps</span><span>RIR</span><span></span></div>
@@ -648,10 +685,11 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero)
 
   for (let i = 1; i <= numSeries; i++) {
     const guardada = guardadasPorNumero[i];
+    const valorPeso = guardada?.peso_kg ?? (pesoSugerido != null ? pesoSugerido : '');
     const fila = h(`
       <div class="fila-serie">
         <span class="num">${i}</span>
-        <input type="number" id="peso-${i}" value="${guardada?.peso_kg ?? ''}" ${guardada ? 'disabled' : ''} />
+        <input type="number" id="peso-${i}" value="${valorPeso}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="reps-${i}" value="${guardada?.repeticiones ?? ''}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="rir-${i}" value="${guardada?.rir ?? ''}" ${guardada ? 'disabled' : ''} />
         <button class="btn-guardar-serie ${guardada ? 'hecha' : ''}" id="btn-${i}">${guardada ? 'Guardado ✓' : 'Guardar'}</button>
@@ -689,9 +727,48 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero)
         document.getElementById(`peso-${i}`).disabled = true;
         document.getElementById(`reps-${i}`).disabled = true;
         document.getElementById(`rir-${i}`).disabled = true;
+
+        if (i < numSeries) iniciarDescanso(90);
       };
     }
   }
+}
+
+// ---- Temporizador de descanso entre series ----
+let descansoInterval = null;
+
+function iniciarDescanso(segundosIniciales) {
+  detenerDescanso();
+  let restante = segundosIniciales;
+
+  const banner = h(`
+    <div class="banner-descanso" id="banner-descanso">
+      <span>Descanso: <strong id="descanso-num">${formatoTiempo(restante)}</strong></span>
+      <button id="descanso-saltar">Saltar</button>
+    </div>`);
+  document.body.appendChild(banner);
+  document.getElementById('descanso-saltar').onclick = detenerDescanso;
+
+  descansoInterval = setInterval(() => {
+    restante--;
+    const num = document.getElementById('descanso-num');
+    if (!num) { detenerDescanso(); return; }
+    if (restante <= 0) { detenerDescanso(); return; }
+    num.textContent = formatoTiempo(restante);
+  }, 1000);
+}
+
+function detenerDescanso() {
+  if (descansoInterval) clearInterval(descansoInterval);
+  descansoInterval = null;
+  const banner = document.getElementById('banner-descanso');
+  if (banner) banner.remove();
+}
+
+function formatoTiempo(segundos) {
+  const m = Math.floor(segundos / 60);
+  const s = segundos % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function calcularTendencia(puntos) {
