@@ -234,3 +234,30 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 .spinner { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: girar 0.7s linear infinite; margin: 0 auto; }
 @keyframes girar { to { transform: rotate(360deg); } }
+
+.banner-descanso {
+  position: fixed;
+  top: 12px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  background: var(--accent);
+  color: #1B1600;
+  border-radius: 30px;
+  padding: 10px 10px 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.banner-descanso button {
+  background: rgba(0,0,0,0.15);
+  border: none;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1B1600;
+  cursor: pointer;
+}
