@@ -1,4 +1,4 @@
-const CACHE = 'gymapp-v1';
+const CACHE = 'gymapp-v2';
 const ARCHIVOS = ['./', './index.html', './styles.css', './app.js', './supabaseClient.js', './manifest.json'];
 
 self.addEventListener('install', (evt) => {
