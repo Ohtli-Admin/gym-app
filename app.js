@@ -194,6 +194,12 @@ function renderOnboarding() {
       <div class="chip-grid" id="p-dias"></div>
       <div id="p-mensaje"></div>
       <button class="boton-primario" id="p-generar">Generar mi rutina</button>
+
+      <h2 class="titulo" style="font-size:16px;margin-top:30px;margin-bottom:2px">Tu peso corporal</h2>
+      <p class="subtitulo">Independiente del peso que usa la rutina — esto es tu historial en el tiempo</p>
+      <div id="peso-form"></div>
+      <div id="peso-grafica"></div>
+      <div id="peso-lista"></div>
     </div>`));
 
   const metasDiv = document.getElementById('p-metas');
@@ -263,6 +269,7 @@ function renderOnboarding() {
   pintarPrioridad();
 
   document.getElementById('p-generar').onclick = generarRutina;
+  renderPesoCorporal();
 }
 
 async function generarRutina() {
@@ -1044,6 +1051,96 @@ async function cargarListaExtra() {
         ${a.notas ? `<div class="linea"><span style="color:var(--text-muted)">${a.notas}</span></div>` : ''}
       </div>`;
   }).join('');
+}
+
+// =========================================================================
+// Peso corporal en el tiempo
+// =========================================================================
+async function renderPesoCorporal() {
+  const formDiv = document.getElementById('peso-form');
+  if (!formDiv) return;
+
+  formDiv.innerHTML = `
+    <div class="fila-2col" style="align-items:end">
+      <div><label class="etiqueta">Peso de hoy (kg)</label><input type="number" step="0.1" id="peso-hoy-input" /></div>
+      <button class="boton-primario" id="peso-hoy-guardar" style="height:47px">Registrar</button>
+    </div>
+    <div id="peso-mensaje"></div>`;
+
+  document.getElementById('peso-hoy-guardar').onclick = async () => {
+    const boton = document.getElementById('peso-hoy-guardar');
+    const input = document.getElementById('peso-hoy-input');
+    const mensajeDiv = document.getElementById('peso-mensaje');
+    mensajeDiv.innerHTML = '';
+
+    if (!input.value) { mensajeDiv.innerHTML = '<div class="mensaje error">Escribe tu peso de hoy.</div>'; return; }
+
+    boton.disabled = true;
+    const { error } = await supabase.from('mediciones_corporales').upsert({
+      usuario_id: estado.sesion.user.id,
+      fecha: new Date().toISOString().slice(0, 10),
+      peso_kg: parseFloat(input.value),
+    }, { onConflict: 'usuario_id,fecha' });
+    boton.disabled = false;
+
+    if (error) { mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo guardar: ${error.message}</div>`; return; }
+
+    input.value = '';
+    mensajeDiv.innerHTML = '<div class="mensaje info">Registrado.</div>';
+    cargarPesoCorporal();
+  };
+
+  cargarPesoCorporal();
+}
+
+async function cargarPesoCorporal() {
+  const graficaDiv = document.getElementById('peso-grafica');
+  const listaDiv = document.getElementById('peso-lista');
+  if (!graficaDiv || !listaDiv) return;
+
+  const { data, error } = await supabase
+    .from('mediciones_corporales').select('fecha, peso_kg')
+    .eq('usuario_id', estado.sesion.user.id)
+    .order('fecha', { ascending: true }).limit(60);
+
+  if (error) { graficaDiv.innerHTML = `<div class="mensaje error">${error.message}</div>`; return; }
+  if (!data || data.length === 0) {
+    graficaDiv.innerHTML = '';
+    listaDiv.innerHTML = '<p class="subtitulo">Todavía no registras tu peso — empieza hoy para ver la tendencia con el tiempo.</p>';
+    return;
+  }
+
+  graficaDiv.innerHTML = dibujarGraficaPeso(data.slice(-20));
+
+  const recientes = [...data].reverse().slice(0, 10);
+  listaDiv.innerHTML = recientes.map((m, i) => {
+    const anterior = recientes[i + 1];
+    let delta = '';
+    if (anterior) {
+      const diff = (m.peso_kg - anterior.peso_kg).toFixed(1);
+      delta = diff > 0 ? `<span style="color:var(--danger)">+${diff}kg</span>` : diff < 0 ? `<span style="color:var(--success)">${diff}kg</span>` : '<span style="color:var(--text-muted)">=</span>';
+    }
+    return `<div class="linea"><span>${m.fecha}</span><strong>${m.peso_kg}kg ${delta}</strong></div>`;
+  }).join('');
+}
+
+function dibujarGraficaPeso(puntos) {
+  if (puntos.length < 2) return '';
+  const w = 300, hgt = 110, pad = 10;
+  const pesos = puntos.map((p) => p.peso_kg);
+  const min = Math.min(...pesos) - 0.5;
+  const max = Math.max(...pesos) + 0.5;
+  const escalaX = (i) => pad + (i * (w - 2 * pad)) / (puntos.length - 1);
+  const escalaY = (v) => hgt - pad - ((v - min) * (hgt - 2 * pad)) / (max - min || 1);
+
+  const linea = puntos.map((p, i) => `${escalaX(i)},${escalaY(p.peso_kg)}`).join(' ');
+  const puntosSvg = puntos.map((p, i) => `<circle cx="${escalaX(i)}" cy="${escalaY(p.peso_kg)}" r="3" fill="var(--accent)" />`).join('');
+
+  return `
+    <svg viewBox="0 0 ${w} ${hgt}" style="width:100%;height:${hgt}px;margin-bottom:14px">
+      <polyline points="${linea}" fill="none" stroke="var(--accent)" stroke-width="2" />
+      ${puntosSvg}
+    </svg>`;
 }
 
 // =========================================================================
