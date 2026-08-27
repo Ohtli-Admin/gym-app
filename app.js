@@ -69,6 +69,7 @@ function render() {
   else if (estado.pantalla === 'rutina') renderRutina();
   else if (estado.pantalla === 'registro') renderRegistro();
   else if (estado.pantalla === 'historial') renderHistorial();
+  else if (estado.pantalla === 'extra') renderExtra();
 
   renderNav();
 }
@@ -79,6 +80,7 @@ function renderNav() {
       <button class="nav-item ${estado.pantalla === 'onboarding' ? 'activo' : ''}" data-nav="onboarding"><span class="icono">👤</span>Perfil</button>
       <button class="nav-item ${estado.pantalla === 'rutina' ? 'activo' : ''}" data-nav="rutina"><span class="icono">📋</span>Rutina</button>
       <button class="nav-item ${estado.pantalla === 'registro' ? 'activo' : ''}" data-nav="registro"><span class="icono">✏️</span>Registro</button>
+      <button class="nav-item ${estado.pantalla === 'extra' ? 'activo' : ''}" data-nav="extra"><span class="icono">🏃</span>Extra</button>
       <button class="nav-item ${estado.pantalla === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
       <button class="nav-item" data-nav="salir"><span class="icono">🚪</span>Salir</button>
     </div>`;
@@ -579,29 +581,75 @@ async function renderRegistro() {
       }
     });
 
-  // ---- Alternativas (con imagen + botón de cambio) ----
-  if (ej.alternativas && ej.alternativas.length > 0) {
-    const contAlt = document.getElementById('reg-alternativas');
-    contAlt.innerHTML = `<div class="bloque-alternativas"><span class="etiqueta">Si no puedes hacer este ejercicio</span><div id="alt-filas"></div></div>`;
-    const filasDiv = document.getElementById('alt-filas');
+  // ---- Alternativas (con imagen + botón de cambio) + buscador manual ----
+  const contAlt = document.getElementById('reg-alternativas');
+  contAlt.innerHTML = `
+    <div class="bloque-alternativas">
+      <span class="etiqueta">Si no puedes hacer este ejercicio</span>
+      <div id="alt-filas"></div>
+      <div id="alt-buscador"></div>
+    </div>`;
+  const filasDiv = document.getElementById('alt-filas');
 
-    ej.alternativas.forEach((alt) => {
-      const fila = h(`
-        <div class="fila-alt">
-          <div class="ph">🏋️</div>
-          <div class="info"><div class="nombre">${alt.nombre}</div><div class="motivo">${alt.motivo}</div></div>
-          <button class="btn-usar-alt">Usar esta</button>
-        </div>`);
-      filasDiv.appendChild(fila);
+  (ej.alternativas || []).forEach((alt) => {
+    const fila = h(`
+      <div class="fila-alt">
+        <div class="ph">🏋️</div>
+        <div class="info"><div class="nombre">${alt.nombre}</div><div class="motivo">${alt.motivo}</div></div>
+        <button class="btn-usar-alt">Usar esta</button>
+      </div>`);
+    filasDiv.appendChild(fila);
 
-      fila.querySelector('.btn-usar-alt').onclick = () => usarAlternativa(alt);
+    fila.querySelector('.btn-usar-alt').onclick = () => usarAlternativa(alt);
 
-      supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', alt.ejercicio_id).order('orden').limit(1)
-        .then(({ data }) => {
-          if (data && data[0]) fila.querySelector('.ph').outerHTML = `<img src="${data[0].url}" />`;
-        });
-    });
-  }
+    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', alt.ejercicio_id).order('orden').limit(1)
+      .then(({ data }) => {
+        if (data && data[0]) fila.querySelector('.ph').outerHTML = `<img src="${data[0].url}" />`;
+      });
+  });
+
+  // ---- Buscador: agrega un ejercicio que TÚ conozcas como alternativa ----
+  const buscadorDiv = document.getElementById('alt-buscador');
+  buscadorDiv.appendChild(h(`
+    <button class="boton-secundario" id="alt-mostrar-buscador" style="text-align:left;padding-left:0">+ Agregar un ejercicio que tú conozcas</button>
+    <div id="alt-buscador-form" style="display:none">
+      <input type="text" id="alt-busqueda-input" placeholder="Nombre del ejercicio (ej. Zancada búlgara)" style="margin-top:8px" />
+      <div id="alt-busqueda-resultados"></div>
+    </div>`));
+
+  document.getElementById('alt-mostrar-buscador').onclick = () => {
+    document.getElementById('alt-buscador-form').style.display = 'block';
+    document.getElementById('alt-mostrar-buscador').style.display = 'none';
+    document.getElementById('alt-busqueda-input').focus();
+  };
+
+  let debounceBusqueda = null;
+  document.getElementById('alt-busqueda-input').oninput = (e) => {
+    clearTimeout(debounceBusqueda);
+    const texto = e.target.value.trim();
+    const resDiv = document.getElementById('alt-busqueda-resultados');
+    if (texto.length < 3) { resDiv.innerHTML = ''; return; }
+    debounceBusqueda = setTimeout(async () => {
+      const { data } = await supabase
+        .from('ejercicios').select('id, nombre, equipo')
+        .ilike('nombre', `%${texto}%`).limit(5);
+      if (!data || data.length === 0) {
+        resDiv.innerHTML = '<p class="subtitulo" style="margin-top:8px">Sin resultados.</p>';
+        return;
+      }
+      resDiv.innerHTML = '';
+      data.forEach((res) => {
+        const fila = h(`
+          <div class="fila-alt" style="margin-top:8px">
+            <div class="ph">🏋️</div>
+            <div class="info"><div class="nombre">${res.nombre}</div><div class="motivo">${res.equipo}</div></div>
+            <button class="btn-usar-alt">Agregar</button>
+          </div>`);
+        resDiv.appendChild(fila);
+        fila.querySelector('.btn-usar-alt').onclick = () => agregarAlternativaManual(res);
+      });
+    }, 350);
+  };
 
   // ---- Sesión de hoy + tabla de series (con precarga de lo guardado) ----
   const userId = estado.sesion.user.id;
@@ -803,6 +851,27 @@ async function usarAlternativa(alt) {
   render();
 }
 
+async function agregarAlternativaManual(resultado) {
+  const ej = estado.ejercicioActivo;
+  const nueva = { ejercicio_id: resultado.id, nombre: resultado.nombre, motivo: 'Agregado por ti.' };
+  // La tuya se guarda primero (más visible); se mantiene como máximo 1 más
+  // de las que ya había, para no saturar la lista.
+  const nuevasAlternativas = [nueva, ...(ej.alternativas || [])].slice(0, 3);
+
+  const { error } = await supabase.from('rutina_ejercicios')
+    .update({ alternativas: nuevasAlternativas })
+    .eq('id', ej.id);
+
+  if (error) {
+    document.getElementById('reg-mensaje').innerHTML = `<div class="mensaje error">No se pudo agregar: ${error.message}</div>`;
+    return;
+  }
+
+  ej.alternativas = nuevasAlternativas;
+  cargarRutina(); // refresca en segundo plano la lista de "Rutina"
+  renderRegistro(); // repinta esta pantalla con la nueva alternativa ya incluida
+}
+
 // =========================================================================
 // Historial
 // =========================================================================
@@ -841,6 +910,105 @@ async function renderHistorial() {
       </div>`);
     lista.appendChild(tarjeta);
   }
+}
+
+// =========================================================================
+// Extra: cardio, abdominales, escalada — separado de la rutina de fuerza
+// =========================================================================
+const TIPOS_EXTRA = [
+  { valor: 'cardio', etiqueta: 'Cardio', icono: '🏃' },
+  { valor: 'abdominales', etiqueta: 'Abdomen', icono: '🔥' },
+  { valor: 'escalada', etiqueta: 'Escalada', icono: '🧗' },
+  { valor: 'otro', etiqueta: 'Otro', icono: '➕' },
+];
+let tipoExtraActivo = 'cardio';
+
+async function renderExtra() {
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      <h1 class="titulo">Actividad extra</h1>
+      <p class="subtitulo">Cardio, abdomen, escalada — independiente de tu rutina de fuerza</p>
+      <div class="chip-grid" id="extra-tipos"></div>
+      <div class="campo">
+        <label class="etiqueta">Duración (min, opcional)</label>
+        <input type="number" id="extra-duracion" placeholder="30" />
+      </div>
+      <div class="campo">
+        <label class="etiqueta">Detalle</label>
+        <input type="text" id="extra-detalle" placeholder="Ej: 5km trote, 3x15 crunches, boulder V3" />
+      </div>
+      <div id="extra-mensaje"></div>
+      <button class="boton-primario" id="extra-guardar">Guardar</button>
+      <h2 class="titulo" style="font-size:16px;margin-top:26px;margin-bottom:10px">Historial</h2>
+      <div id="extra-lista"><div class="pantalla-carga"><div class="spinner"></div></div></div>
+    </div>`));
+
+  const tiposDiv = document.getElementById('extra-tipos');
+  function pintarTipos() {
+    tiposDiv.innerHTML = TIPOS_EXTRA.map((t) =>
+      `<button class="chip ${tipoExtraActivo === t.valor ? 'activo' : ''}" data-tipo="${t.valor}">${t.icono} ${t.etiqueta}</button>`,
+    ).join('');
+    tiposDiv.querySelectorAll('[data-tipo]').forEach((btn) => {
+      btn.onclick = () => { tipoExtraActivo = btn.dataset.tipo; pintarTipos(); cargarListaExtra(); };
+    });
+  }
+  pintarTipos();
+
+  document.getElementById('extra-guardar').onclick = async () => {
+    const boton = document.getElementById('extra-guardar');
+    const mensajeDiv = document.getElementById('extra-mensaje');
+    const duracion = document.getElementById('extra-duracion').value;
+    const detalle = document.getElementById('extra-detalle').value.trim();
+    mensajeDiv.innerHTML = '';
+
+    if (!detalle) { mensajeDiv.innerHTML = '<div class="mensaje error">Escribe al menos un detalle de lo que hiciste.</div>'; return; }
+
+    boton.disabled = true;
+    boton.innerHTML = '<div class="spinner"></div>';
+
+    const { error } = await supabase.from('actividades_extra').insert({
+      usuario_id: estado.sesion.user.id,
+      tipo: tipoExtraActivo,
+      duracion_min: duracion ? parseInt(duracion, 10) : null,
+      detalle,
+    });
+
+    boton.disabled = false;
+    boton.textContent = 'Guardar';
+
+    if (error) { mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo guardar: ${error.message}</div>`; return; }
+
+    document.getElementById('extra-duracion').value = '';
+    document.getElementById('extra-detalle').value = '';
+    mensajeDiv.innerHTML = '<div class="mensaje info">Guardado.</div>';
+    cargarListaExtra();
+  };
+
+  cargarListaExtra();
+}
+
+async function cargarListaExtra() {
+  const lista = document.getElementById('extra-lista');
+  if (!lista) return;
+  lista.innerHTML = '<div class="pantalla-carga"><div class="spinner"></div></div>';
+
+  const { data, error } = await supabase
+    .from('actividades_extra').select('*')
+    .eq('usuario_id', estado.sesion.user.id).eq('tipo', tipoExtraActivo)
+    .order('fecha', { ascending: false }).limit(20);
+
+  if (error) { lista.innerHTML = `<div class="mensaje error">${error.message}</div>`; return; }
+  if (!data || data.length === 0) {
+    lista.innerHTML = `<div class="vacio"><div class="icono-grande">📭</div><p>Todavía no registras nada aquí.</p></div>`;
+    return;
+  }
+
+  lista.innerHTML = data.map((a) => `
+    <div class="tarjeta-sesion">
+      <div class="fecha">${a.fecha}</div>
+      <div class="linea"><span>${a.detalle}</span>${a.duracion_min ? `<strong>${a.duracion_min} min</strong>` : ''}</div>
+    </div>`).join('');
 }
 
 // =========================================================================
