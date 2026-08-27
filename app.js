@@ -923,6 +923,10 @@ const TIPOS_EXTRA = [
 ];
 let tipoExtraActivo = 'cardio';
 
+function esTipoEstructurado(tipo) {
+  return tipo === 'abdominales' || tipo === 'escalada';
+}
+
 async function renderExtra() {
   app.innerHTML = '';
   app.appendChild(h(`
@@ -930,14 +934,7 @@ async function renderExtra() {
       <h1 class="titulo">Actividad extra</h1>
       <p class="subtitulo">Cardio, abdomen, escalada — independiente de tu rutina de fuerza</p>
       <div class="chip-grid" id="extra-tipos"></div>
-      <div class="campo">
-        <label class="etiqueta">Duración (min, opcional)</label>
-        <input type="number" id="extra-duracion" placeholder="30" />
-      </div>
-      <div class="campo">
-        <label class="etiqueta">Detalle</label>
-        <input type="text" id="extra-detalle" placeholder="Ej: 5km trote, 3x15 crunches, boulder V3" />
-      </div>
+      <div id="extra-form"></div>
       <div id="extra-mensaje"></div>
       <button class="boton-primario" id="extra-guardar">Guardar</button>
       <h2 class="titulo" style="font-size:16px;margin-top:26px;margin-bottom:10px">Historial</h2>
@@ -950,19 +947,47 @@ async function renderExtra() {
       `<button class="chip ${tipoExtraActivo === t.valor ? 'activo' : ''}" data-tipo="${t.valor}">${t.icono} ${t.etiqueta}</button>`,
     ).join('');
     tiposDiv.querySelectorAll('[data-tipo]').forEach((btn) => {
-      btn.onclick = () => { tipoExtraActivo = btn.dataset.tipo; pintarTipos(); cargarListaExtra(); };
+      btn.onclick = () => { tipoExtraActivo = btn.dataset.tipo; pintarTipos(); pintarFormulario(); cargarListaExtra(); };
     });
   }
+
+  function pintarFormulario() {
+    const formDiv = document.getElementById('extra-form');
+    if (tipoExtraActivo === 'cardio') {
+      formDiv.innerHTML = `
+        <div class="campo"><label class="etiqueta">Actividad</label><input type="text" id="extra-nombre" placeholder="Ej: Trote, bici, remo" /></div>
+        <div class="campo"><label class="etiqueta">Duración (min)</label><input type="number" id="extra-duracion" placeholder="30" /></div>
+        <div class="campo"><label class="etiqueta">Notas (velocidad, inclinación, distancia...)</label><input type="text" id="extra-notas" placeholder="Ej: 5km, velocidad 8, inclinación 2%" /></div>`;
+    } else if (esTipoEstructurado(tipoExtraActivo)) {
+      formDiv.innerHTML = `
+        <div class="campo"><label class="etiqueta">Ejercicio</label><input type="text" id="extra-nombre" placeholder="Ej: Crunches, Dead hang dedos, Boulder V3" /></div>
+        <div class="fila-2col">
+          <div><label class="etiqueta">Series (opcional)</label><input type="number" id="extra-series" placeholder="3" /></div>
+          <div><label class="etiqueta">Reps (opcional)</label><input type="text" id="extra-repeticiones" placeholder="15 o 30 seg" /></div>
+        </div>
+        <div class="campo"><label class="etiqueta">Notas (opcional)</label><input type="text" id="extra-notas" placeholder="Ej: logrado al tercer intento" /></div>`;
+    } else {
+      formDiv.innerHTML = `
+        <div class="campo"><label class="etiqueta">Detalle</label><input type="text" id="extra-nombre" placeholder="Describe qué hiciste" /></div>
+        <div class="campo"><label class="etiqueta">Duración (min, opcional)</label><input type="number" id="extra-duracion" placeholder="30" /></div>`;
+    }
+  }
+
   pintarTipos();
+  pintarFormulario();
 
   document.getElementById('extra-guardar').onclick = async () => {
     const boton = document.getElementById('extra-guardar');
     const mensajeDiv = document.getElementById('extra-mensaje');
-    const duracion = document.getElementById('extra-duracion').value;
-    const detalle = document.getElementById('extra-detalle').value.trim();
     mensajeDiv.innerHTML = '';
 
-    if (!detalle) { mensajeDiv.innerHTML = '<div class="mensaje error">Escribe al menos un detalle de lo que hiciste.</div>'; return; }
+    const nombre = document.getElementById('extra-nombre').value.trim();
+    if (!nombre) { mensajeDiv.innerHTML = '<div class="mensaje error">Escribe al menos el nombre de la actividad/ejercicio.</div>'; return; }
+
+    const duracionEl = document.getElementById('extra-duracion');
+    const seriesEl = document.getElementById('extra-series');
+    const repsEl = document.getElementById('extra-repeticiones');
+    const notasEl = document.getElementById('extra-notas');
 
     boton.disabled = true;
     boton.innerHTML = '<div class="spinner"></div>';
@@ -970,8 +995,11 @@ async function renderExtra() {
     const { error } = await supabase.from('actividades_extra').insert({
       usuario_id: estado.sesion.user.id,
       tipo: tipoExtraActivo,
-      duracion_min: duracion ? parseInt(duracion, 10) : null,
-      detalle,
+      nombre_actividad: nombre,
+      duracion_min: duracionEl?.value ? parseInt(duracionEl.value, 10) : null,
+      series: seriesEl?.value ? parseInt(seriesEl.value, 10) : null,
+      repeticiones: repsEl?.value || null,
+      notas: notasEl?.value || null,
     });
 
     boton.disabled = false;
@@ -979,9 +1007,8 @@ async function renderExtra() {
 
     if (error) { mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo guardar: ${error.message}</div>`; return; }
 
-    document.getElementById('extra-duracion').value = '';
-    document.getElementById('extra-detalle').value = '';
-    mensajeDiv.innerHTML = '<div class="mensaje info">Guardado.</div>';
+    pintarFormulario(); // limpia el formulario, listo para agregar el siguiente ejercicio del mismo día
+    mensajeDiv.innerHTML = '<div class="mensaje info">Guardado. Puedes agregar otro ejercicio de la misma sesión.</div>';
     cargarListaExtra();
   };
 
@@ -996,7 +1023,7 @@ async function cargarListaExtra() {
   const { data, error } = await supabase
     .from('actividades_extra').select('*')
     .eq('usuario_id', estado.sesion.user.id).eq('tipo', tipoExtraActivo)
-    .order('fecha', { ascending: false }).limit(20);
+    .order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(30);
 
   if (error) { lista.innerHTML = `<div class="mensaje error">${error.message}</div>`; return; }
   if (!data || data.length === 0) {
@@ -1004,11 +1031,19 @@ async function cargarListaExtra() {
     return;
   }
 
-  lista.innerHTML = data.map((a) => `
-    <div class="tarjeta-sesion">
-      <div class="fecha">${a.fecha}</div>
-      <div class="linea"><span>${a.detalle}</span>${a.duracion_min ? `<strong>${a.duracion_min} min</strong>` : ''}</div>
-    </div>`).join('');
+  lista.innerHTML = data.map((a) => {
+    const partes = [];
+    if (a.series) partes.push(`${a.series} series`);
+    if (a.repeticiones) partes.push(`${a.repeticiones} reps`);
+    if (a.duracion_min) partes.push(`${a.duracion_min} min`);
+    const derecha = partes.join(' · ');
+    return `
+      <div class="tarjeta-sesion">
+        <div class="fecha">${a.fecha}</div>
+        <div class="linea"><span>${a.nombre_actividad}</span>${derecha ? `<strong>${derecha}</strong>` : ''}</div>
+        ${a.notas ? `<div class="linea"><span style="color:var(--text-muted)">${a.notas}</span></div>` : ''}
+      </div>`;
+  }).join('');
 }
 
 // =========================================================================
