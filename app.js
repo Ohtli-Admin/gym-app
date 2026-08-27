@@ -337,6 +337,37 @@ async function generarRutina() {
 // =========================================================================
 // Cargar rutina + estadísticas de días
 // =========================================================================
+async function regenerarDia(diaNumero) {
+  const confirmado = confirm(
+    `¿Regenerar el Día ${diaNumero} con IA? Esto reemplaza los ejercicios de ese día (los demás días no se tocan) y consume una llamada a Claude.`,
+  );
+  if (!confirmado) return;
+
+  const btn = document.getElementById('btn-regenerar-dia');
+  const mensajeDiv = document.getElementById('regen-mensaje');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>';
+  mensajeDiv.innerHTML = '';
+
+  const { data, error } = await supabase.functions.invoke('regenerate-day', { body: { dia: diaNumero } });
+
+  btn.disabled = false;
+  btn.textContent = '🔄 Regenerar solo este día con IA';
+
+  if (error) {
+    let detalle = error.message;
+    try {
+      const cuerpo = await error.context.json();
+      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
+    } catch (e) {}
+    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo regenerar el día: ${detalle}</div>`;
+    return;
+  }
+
+  mensajeDiv.innerHTML = `<div class="mensaje info">Día ${data.dia} regenerado: ${data.nombre_dia}.</div>`;
+  await cargarRutina();
+}
+
 async function cargarRutina() {
   estado.cargandoRutina = true;
   estado.errorRutina = null;
@@ -506,9 +537,13 @@ function renderRutina() {
         <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
       </div>
       <div class="tabs-dias" id="tabs-dias"></div>
+      <button class="boton-secundario" id="btn-regenerar-dia" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
+      <div id="regen-mensaje"></div>
       <div id="lista-ejercicios"></div>
     </div>`));
   app.appendChild(cont);
+
+  document.getElementById('btn-regenerar-dia').onclick = () => regenerarDia(dia.dia);
 
   const tabsDiv = document.getElementById('tabs-dias');
   estado.dias.forEach((d, idx) => {
