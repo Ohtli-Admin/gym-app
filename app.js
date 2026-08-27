@@ -594,13 +594,14 @@ async function renderRegistro() {
       `).join('')}</div>`;
     });
 
-  // ---- Progreso / estancamiento ----
+  // ---- Progreso / estancamiento (por sesión) + estancamiento por semanas ----
   supabase.from('series_registradas')
     .select('peso_kg, sesiones_entrenamiento!inner(fecha)')
     .eq('ejercicio_id', ej.ejercicio_id).not('peso_kg', 'is', null)
     .then(({ data }) => {
       const cont = document.getElementById('reg-progreso');
       if (!cont || !data) return;
+
       const mejorPorFecha = {};
       for (const s of data) {
         const f = s.sesiones_entrenamiento.fecha;
@@ -608,6 +609,8 @@ async function renderRegistro() {
       }
       const puntos = Object.entries(mejorPorFecha).sort(([a], [b]) => (a < b ? -1 : 1)).map(([, p]) => p);
       const prog = calcularTendencia(puntos);
+
+      let html = '';
       if (prog.estado !== 'sin_datos') {
         let extra = '';
         const bajaConsistencia = estado.tasaConsistenciaReciente != null && estado.tasaConsistenciaReciente < 0.7;
@@ -615,8 +618,25 @@ async function renderRegistro() {
           const pct = Math.round(estado.tasaConsistenciaReciente * 100);
           extra = `<div style="margin-top:6px;font-weight:400">Además, en tus semanas recientes solo completaste ~${pct}% de tus días planeados — la falta de consistencia probablemente esté contribuyendo a esto, no solo el ejercicio en sí.</div>`;
         }
-        cont.innerHTML = `<div class="bloque-progreso ${prog.estado}">${prog.texto}${extra}</div>`;
+        html += `<div class="bloque-progreso ${prog.estado}">${prog.texto}${extra}</div>`;
       }
+
+      // Estancamiento por SEMANAS calendario (más confiable que comparar
+      // sesiones sueltas, sobre todo si entrenas el mismo ejercicio varias
+      // veces por semana).
+      const puntosSemanales = pesoMaximoPorSemana(
+        Object.entries(mejorPorFecha).map(([fecha, peso_kg]) => ({ fecha, peso_kg })),
+      );
+      const estancSemanas = detectarEstancamientoSemanas(puntosSemanales);
+      if (estancSemanas) {
+        html += `
+          <div class="bloque-progreso estancado" style="margin-top:8px">
+            ⚠️ Llevas ${estancSemanas.semanas} semanas seguidas sin subir peso en este ejercicio (${estancSemanas.peso}kg).
+            <div style="margin-top:6px;font-weight:400">Opciones a considerar: sube el peso aunque bajes 1-2 reps, cambia el rango de repeticiones, prueba una de las alternativas de abajo, o dale unos días de descanso extra a este grupo muscular (deload).</div>
+          </div>`;
+      }
+
+      cont.innerHTML = html;
     });
 
   // ---- Alternativas (con imagen + botón de cambio) + buscador manual ----
@@ -855,6 +875,31 @@ function formatoTiempo(segundos) {
   const m = Math.floor(segundos / 60);
   const s = segundos % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Agrupa el peso máximo usado por semana calendario (lunes a domingo),
+// para detectar estancamientos reales en vez de comparar sesiones sueltas.
+function pesoMaximoPorSemana(puntosConFecha) {
+  const mapa = {};
+  for (const p of puntosConFecha) {
+    const semana = formatoFecha(inicioDeSemana(p.fecha));
+    if (!mapa[semana] || p.peso_kg > mapa[semana]) mapa[semana] = p.peso_kg;
+  }
+  return Object.entries(mapa).sort(([a], [b]) => (a < b ? -1 : 1)).map(([semana, peso]) => ({ semana, peso }));
+}
+
+// Si en las últimas semanas (con datos) el peso máximo no subió 3 o más
+// veces seguidas, se considera un estancamiento real.
+function detectarEstancamientoSemanas(puntosSemanales) {
+  if (puntosSemanales.length < 3) return null;
+  const ultimas = puntosSemanales.slice(-5);
+  let racha = 1;
+  for (let i = ultimas.length - 1; i > 0; i--) {
+    if (ultimas[i].peso <= ultimas[i - 1].peso) racha++;
+    else break;
+  }
+  if (racha >= 3) return { semanas: racha, peso: ultimas[ultimas.length - 1].peso };
+  return null;
 }
 
 function calcularTendencia(puntos) {
