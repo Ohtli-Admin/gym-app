@@ -167,6 +167,7 @@ function renderAuth() {
 const perfilForm = {
   nombre: '', peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], dias: 4, evitarMaquinas: false,
 };
+let perfilPrecargado = false;
 
 function renderOnboarding() {
   app.innerHTML = '';
@@ -310,6 +311,8 @@ async function generarRutina() {
     });
     if (perfilError) throw new Error(`No se pudo guardar tu perfil: ${perfilError.message}`);
     perfilForm.nombre = nombre;
+    const tituloEl = document.querySelector('#app h1.titulo');
+    if (tituloEl && nombre) tituloEl.textContent = `Hola, ${nombre} 👋`;
 
     const { data, error: funcionError } = await supabase.functions.invoke('generate-routine');
     if (funcionError) {
@@ -352,6 +355,14 @@ async function cargarRutina() {
     perfilForm.lesiones = perfilExistente.lesiones || perfilForm.lesiones;
     perfilForm.dias = perfilExistente.dias_disponibles || perfilForm.dias;
     perfilForm.evitarMaquinas = perfilExistente.evitar_maquinas || false;
+
+    // Solo la PRIMERA vez que se precargan datos (al abrir la app), refresca
+    // la pantalla de Perfil para que se vean — si lo hiciéramos siempre,
+    // borraríamos el mensaje de éxito justo después de generar una rutina.
+    if (!perfilPrecargado) {
+      perfilPrecargado = true;
+      if (estado.pantalla === 'onboarding') renderOnboarding();
+    }
   }
 
   const { data: rutina, error: rutinaError } = await supabase
