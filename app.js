@@ -165,15 +165,19 @@ function renderAuth() {
 // Perfil / Onboarding
 // =========================================================================
 const perfilForm = {
-  peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], dias: 4, evitarMaquinas: false,
+  nombre: '', peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], dias: 4, evitarMaquinas: false,
 };
 
 function renderOnboarding() {
   app.innerHTML = '';
   app.appendChild(h(`
     <div>
-      <h1 class="titulo">Cuéntanos de ti</h1>
+      <h1 class="titulo">${perfilForm.nombre ? `Hola, ${perfilForm.nombre} 👋` : 'Cuéntanos de ti'}</h1>
       <p class="subtitulo">Esto define tu rutina inicial</p>
+      <div class="campo">
+        <label class="etiqueta">Tu nombre</label>
+        <input type="text" id="p-nombre" placeholder="¿Cómo te llamas?" value="${perfilForm.nombre}" />
+      </div>
       <div class="fila-2col">
         <div><label class="etiqueta">Peso (kg)</label><input type="number" id="p-peso" placeholder="70" value="${perfilForm.peso}" /></div>
         <div><label class="etiqueta">Edad</label><input type="number" id="p-edad" placeholder="28" value="${perfilForm.edad}" /></div>
@@ -275,6 +279,7 @@ function renderOnboarding() {
 async function generarRutina() {
   const mensajeDiv = document.getElementById('p-mensaje');
   const boton = document.getElementById('p-generar');
+  const nombre = document.getElementById('p-nombre').value.trim();
   const peso = document.getElementById('p-peso').value;
   const edad = document.getElementById('p-edad').value;
 
@@ -293,6 +298,7 @@ async function generarRutina() {
 
     const { error: perfilError } = await supabase.from('perfiles').upsert({
       id: user.id,
+      nombre: nombre || null,
       peso_kg: parseFloat(peso),
       edad: parseInt(edad, 10),
       nivel: 'intermedio',
@@ -303,6 +309,7 @@ async function generarRutina() {
       evitar_maquinas: perfilForm.evitarMaquinas,
     });
     if (perfilError) throw new Error(`No se pudo guardar tu perfil: ${perfilError.message}`);
+    perfilForm.nombre = nombre;
 
     const { data, error: funcionError } = await supabase.functions.invoke('generate-routine');
     if (funcionError) {
@@ -333,6 +340,19 @@ async function cargarRutina() {
   if (estado.pantalla === 'rutina') render();
 
   const userId = estado.sesion.user.id;
+
+  const { data: perfilExistente } = await supabase
+    .from('perfiles').select('nombre, peso_kg, edad, metas, lesiones, dias_disponibles, evitar_maquinas')
+    .eq('id', userId).maybeSingle();
+  if (perfilExistente) {
+    perfilForm.nombre = perfilExistente.nombre || '';
+    perfilForm.peso = perfilExistente.peso_kg ?? '';
+    perfilForm.edad = perfilExistente.edad ?? '';
+    perfilForm.metas = perfilExistente.metas || perfilForm.metas;
+    perfilForm.lesiones = perfilExistente.lesiones || perfilForm.lesiones;
+    perfilForm.dias = perfilExistente.dias_disponibles || perfilForm.dias;
+    perfilForm.evitarMaquinas = perfilExistente.evitar_maquinas || false;
+  }
 
   const { data: rutina, error: rutinaError } = await supabase
     .from('rutinas').select('id')
