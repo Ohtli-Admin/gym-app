@@ -3,7 +3,7 @@
 // =========================================================================
 const estado = {
   sesion: undefined, // undefined = cargando, null = sin sesión
-  pantalla: 'onboarding',
+  pantalla: 'rutina',
   authModo: 'login', // 'login' | 'registro' | 'reset'
   dias: null,
   rutinaId: null,
