@@ -703,12 +703,12 @@ async function renderRegistro() {
 
   // ---- Buscador: agrega un ejercicio que TÚ conozcas como alternativa ----
   const buscadorDiv = document.getElementById('alt-buscador');
-  buscadorDiv.appendChild(h(`
+  buscadorDiv.innerHTML = `
     <button class="boton-secundario" id="alt-mostrar-buscador" style="text-align:left;padding-left:0">+ Agregar un ejercicio que tú conozcas</button>
     <div id="alt-buscador-form" style="display:none">
       <input type="text" id="alt-busqueda-input" placeholder="Nombre del ejercicio (ej. Zancada búlgara)" style="margin-top:8px" />
       <div id="alt-busqueda-resultados"></div>
-    </div>`));
+    </div>`;
 
   document.getElementById('alt-mostrar-buscador').onclick = () => {
     document.getElementById('alt-buscador-form').style.display = 'block';
