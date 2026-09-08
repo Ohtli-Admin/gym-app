@@ -629,21 +629,43 @@ async function renderRegistro() {
       `).join('')}</div>`;
     });
 
+  // ---- Toggle: ¿este ejercicio usa peso de asistencia? ----
+  const toggleAsistidoDiv = h(`
+    <div class="toggle-fila ${ej.peso_asistido ? 'activo' : ''}" id="toggle-asistido" style="margin-bottom:14px">
+      <div class="toggle-dot"></div>
+      <div class="toggle-texto">
+        <strong>Es un ejercicio de asistencia</strong>
+        <span>Ej. dominadas asistidas: MENOS peso en la máquina = más difícil. Actívalo para que el progreso se interprete al revés.</span>
+      </div>
+    </div>`);
+  document.getElementById('reg-guia').insertAdjacentElement('afterend', toggleAsistidoDiv);
+  toggleAsistidoDiv.onclick = async () => {
+    const nuevoValor = !ej.peso_asistido;
+    await supabase.from('rutina_ejercicios').update({ peso_asistido: nuevoValor }).eq('id', ej.id);
+    ej.peso_asistido = nuevoValor;
+    renderRegistro();
+  };
+
   // ---- Progreso / estancamiento (por sesión) + estancamiento por semanas ----
   supabase.from('series_registradas')
-    .select('peso_kg, sesiones_entrenamiento!inner(fecha)')
-    .eq('ejercicio_id', ej.ejercicio_id).not('peso_kg', 'is', null)
+    .select('peso_kg, repeticiones, sesiones_entrenamiento!inner(fecha)')
+    .eq('ejercicio_id', ej.ejercicio_id)
     .then(({ data }) => {
       const cont = document.getElementById('reg-progreso');
       if (!cont || !data) return;
 
+      const hayPeso = data.some((s) => s.peso_kg != null && s.peso_kg > 0);
+      // Si nunca se registra peso (ej. Wall Angel, puro peso corporal), usamos
+      // las repeticiones como medida de progreso en su lugar.
+      const campo = hayPeso ? 'peso_kg' : 'repeticiones';
       const mejorPorFecha = {};
       for (const s of data) {
+        if (s[campo] == null) continue;
         const f = s.sesiones_entrenamiento.fecha;
-        if (!mejorPorFecha[f] || s.peso_kg > mejorPorFecha[f]) mejorPorFecha[f] = s.peso_kg;
+        if (!mejorPorFecha[f] || s[campo] > mejorPorFecha[f]) mejorPorFecha[f] = s[campo];
       }
       const puntos = Object.entries(mejorPorFecha).sort(([a], [b]) => (a < b ? -1 : 1)).map(([, p]) => p);
-      const prog = calcularTendencia(puntos);
+      const prog = calcularTendencia(puntos, hayPeso && ej.peso_asistido, hayPeso ? 'kg' : 'reps');
 
       let html = '';
       if (prog.estado !== 'sin_datos') {
@@ -660,14 +682,15 @@ async function renderRegistro() {
       // sesiones sueltas, sobre todo si entrenas el mismo ejercicio varias
       // veces por semana).
       const puntosSemanales = pesoMaximoPorSemana(
-        Object.entries(mejorPorFecha).map(([fecha, peso_kg]) => ({ fecha, peso_kg })),
+        Object.entries(mejorPorFecha).map(([fecha, valor]) => ({ fecha, valor })),
       );
-      const estancSemanas = detectarEstancamientoSemanas(puntosSemanales);
+      const estancSemanas = detectarEstancamientoSemanas(puntosSemanales, hayPeso && ej.peso_asistido);
       if (estancSemanas) {
+        const unidad = hayPeso ? 'kg' : 'reps';
         html += `
           <div class="bloque-progreso estancado" style="margin-top:8px">
-            ⚠️ Llevas ${estancSemanas.semanas} semanas seguidas sin subir peso en este ejercicio (${estancSemanas.peso}kg).
-            <div style="margin-top:6px;font-weight:400">Opciones a considerar: sube el peso aunque bajes 1-2 reps, cambia el rango de repeticiones, prueba una de las alternativas de abajo, o dale unos días de descanso extra a este grupo muscular (deload).</div>
+            ⚠️ Llevas ${estancSemanas.semanas} semanas seguidas sin mejorar en este ejercicio (${estancSemanas.valor}${unidad}).
+            <div style="margin-top:6px;font-weight:400">Opciones a considerar: ${hayPeso ? 'ajusta el peso aunque bajes 1-2 reps' : 'suma 1-2 repeticiones aunque sea con más esfuerzo'}, cambia el rango de repeticiones, prueba una de las alternativas de abajo, o dale unos días de descanso extra a este grupo muscular (deload).</div>
           </div>`;
       }
 
@@ -777,7 +800,7 @@ async function renderRegistro() {
   for (const s of seriesGuardadas || []) guardadasPorNumero[s.numero_serie] = s;
 
   // ---- Sugerencia de peso, basada en tu RIR de la última sesión (no hoy) ----
-  const sugerencia = await sugerirProgresion(ej.ejercicio_id, userId, hoy);
+  const sugerencia = await sugerirProgresion(ej.ejercicio_id, userId, hoy, ej.peso_asistido);
   if (sugerencia) {
     const cont = document.getElementById('reg-guia');
     cont.insertAdjacentHTML('beforebegin', `<div class="mensaje info">💡 ${sugerencia.texto}</div>`);
@@ -787,7 +810,7 @@ async function renderRegistro() {
   pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null);
 }
 
-async function sugerirProgresion(ejercicioId, userId, hoyStr) {
+async function sugerirProgresion(ejercicioId, userId, hoyStr, esAsistido) {
   const { data } = await supabase
     .from('series_registradas')
     .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)')
@@ -811,8 +834,15 @@ async function sugerirProgresion(ejercicioId, userId, hoyStr) {
     return { peso: pesoMax, texto: `Sugerido: mantén ${pesoMax}kg — la última vez fuiste cerca del fallo (RIR ${rirPromedio.toFixed(1)}).` };
   }
   if (rirPromedio >= 3) {
-    const nuevoPeso = Math.round((pesoMax + 2.5) * 2) / 2;
-    return { peso: nuevoPeso, texto: `Sugerido: sube a ${nuevoPeso}kg — la última vez te sobró margen (RIR ${rirPromedio.toFixed(1)}).` };
+    // "Hacerlo más difícil" es +2.5kg en un ejercicio normal, pero -2.5kg
+    // de asistencia en uno asistido (sin bajar de 0).
+    const nuevoPeso = esAsistido
+      ? Math.max(0, Math.round((pesoMax - 2.5) * 2) / 2)
+      : Math.round((pesoMax + 2.5) * 2) / 2;
+    const texto = esAsistido
+      ? `Sugerido: baja la asistencia a ${nuevoPeso}kg — la última vez te sobró margen (RIR ${rirPromedio.toFixed(1)}).`
+      : `Sugerido: sube a ${nuevoPeso}kg — la última vez te sobró margen (RIR ${rirPromedio.toFixed(1)}).`;
+    return { peso: nuevoPeso, texto };
   }
   return { peso: pesoMax, texto: `Sugerido: continúa con ${pesoMax}kg (igual que tu última vez).` };
 }
@@ -912,41 +942,66 @@ function formatoTiempo(segundos) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// Agrupa el peso máximo usado por semana calendario (lunes a domingo),
-// para detectar estancamientos reales en vez de comparar sesiones sueltas.
+// Agrupa el mejor valor (peso o reps) por semana calendario (lunes a
+// domingo), para detectar estancamientos reales en vez de comparar
+// sesiones sueltas.
 function pesoMaximoPorSemana(puntosConFecha) {
   const mapa = {};
   for (const p of puntosConFecha) {
     const semana = formatoFecha(inicioDeSemana(p.fecha));
-    if (!mapa[semana] || p.peso_kg > mapa[semana]) mapa[semana] = p.peso_kg;
+    if (!mapa[semana] || p.valor > mapa[semana]) mapa[semana] = p.valor;
   }
-  return Object.entries(mapa).sort(([a], [b]) => (a < b ? -1 : 1)).map(([semana, peso]) => ({ semana, peso }));
+  return Object.entries(mapa).sort(([a], [b]) => (a < b ? -1 : 1)).map(([semana, valor]) => ({ semana, valor }));
 }
 
-// Si en las últimas semanas (con datos) el peso máximo no subió 3 o más
-// veces seguidas, se considera un estancamiento real.
-function detectarEstancamientoSemanas(puntosSemanales) {
+// Si en las últimas semanas (con datos) no hubo mejora 3 o más veces
+// seguidas, se considera un estancamiento real. Con "invertido" (peso de
+// asistencia), "mejora" significa que el valor BAJÓ, no que subió.
+function detectarEstancamientoSemanas(puntosSemanales, invertido) {
   if (puntosSemanales.length < 3) return null;
   const ultimas = puntosSemanales.slice(-5);
   let racha = 1;
   for (let i = ultimas.length - 1; i > 0; i--) {
-    if (ultimas[i].peso <= ultimas[i - 1].peso) racha++;
+    const sinMejora = invertido ? ultimas[i].valor >= ultimas[i - 1].valor : ultimas[i].valor <= ultimas[i - 1].valor;
+    if (sinMejora) racha++;
     else break;
   }
-  if (racha >= 3) return { semanas: racha, peso: ultimas[ultimas.length - 1].peso };
+  if (racha >= 3) return { semanas: racha, valor: ultimas[ultimas.length - 1].valor };
   return null;
 }
 
-function calcularTendencia(puntos) {
+// "invertido" = true para peso de asistencia (menos peso = más difícil =
+// progreso). "unidad" es solo para el texto ('kg' o 'reps').
+function calcularTendencia(puntos, invertido, unidad) {
   if (puntos.length < 2) return { estado: 'sin_datos', texto: '' };
+  const u = unidad || 'kg';
   const ultimo = puntos[puntos.length - 1];
   const anterior = puntos[puntos.length - 2];
-  if (ultimo > anterior) return { estado: 'progresando', texto: `📈 Progresando: subiste de ${anterior}kg a ${ultimo}kg.` };
-  if (ultimo < anterior) return { estado: 'bajando', texto: `📉 Bajaste de ${anterior}kg a ${ultimo}kg respecto a tu sesión anterior.` };
+  const mejoro = invertido ? ultimo < anterior : ultimo > anterior;
+  const empeoro = invertido ? ultimo > anterior : ultimo < anterior;
+
+  if (mejoro) {
+    return {
+      estado: 'progresando',
+      texto: invertido
+        ? `📈 Progresando: bajaste la asistencia de ${anterior}${u} a ${ultimo}${u} (más difícil).`
+        : `📈 Progresando: subiste de ${anterior}${u} a ${ultimo}${u}.`,
+    };
+  }
+  if (empeoro) {
+    return {
+      estado: 'bajando',
+      texto: invertido
+        ? `📉 Subiste la asistencia de ${anterior}${u} a ${ultimo}${u} (más fácil) respecto a tu sesión anterior.`
+        : `📉 Bajaste de ${anterior}${u} a ${ultimo}${u} respecto a tu sesión anterior.`,
+    };
+  }
   const ultimosN = puntos.slice(-3);
   const estancado = ultimosN.length === 3 && ultimosN.every((p) => p === ultimosN[0]);
-  if (estancado) return { estado: 'estancado', texto: `⏸ Estancado en ${ultimo}kg las últimas ${ultimosN.length} sesiones — considera subir peso o reps.` };
-  return { estado: 'igual', texto: `Mismo peso que tu sesión anterior (${ultimo}kg).` };
+  if (estancado) {
+    return { estado: 'estancado', texto: `⏸ Estancado en ${ultimo}${u} las últimas ${ultimosN.length} sesiones — considera ajustar peso o reps.` };
+  }
+  return { estado: 'igual', texto: `Mismo valor que tu sesión anterior (${ultimo}${u}).` };
 }
 
 async function usarAlternativa(alt) {
