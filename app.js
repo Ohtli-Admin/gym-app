@@ -165,7 +165,7 @@ function renderAuth() {
 // Perfil / Onboarding
 // =========================================================================
 const perfilForm = {
-  nombre: '', peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], dias: 4, evitarMaquinas: false,
+  nombre: '', peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], condicionesMedicas: '', dias: 4, evitarMaquinas: false,
 };
 let perfilPrecargado = false;
 
@@ -186,8 +186,15 @@ function renderOnboarding() {
       <label class="etiqueta">Tus metas (hasta ${MAX_METAS})</label>
       <div class="chip-grid" id="p-metas"></div>
       <div id="p-prioridad"></div>
-      <label class="etiqueta">¿Alguna lesión o limitación?</label>
+      <label class="etiqueta">¿Alguna lesión o limitación? (rápido, general)</label>
       <div class="chip-grid" id="p-lesiones"></div>
+      <div class="campo">
+        <label class="etiqueta">Condiciones médicas específicas (opcional, pero importante)</label>
+        <input type="text" id="p-condiciones" placeholder="Ej: fusión L5-S1 con tornillos, tendinopatía de supraespinoso..." value="${perfilForm.condicionesMedicas}" />
+        <p class="subtitulo" style="margin-top:6px;margin-bottom:0">
+          Entre más específico seas, mejor puede la IA evitar movimientos de riesgo. Esto NO sustituye la valoración de tu médico o fisioterapeuta — compártelo con ellos antes de entrenar zonas afectadas.
+        </p>
+      </div>
       <div class="toggle-fila ${perfilForm.evitarMaquinas ? 'activo' : ''}" id="p-evitar-maquinas">
         <div class="toggle-dot"></div>
         <div class="toggle-texto">
@@ -281,6 +288,7 @@ async function generarRutina() {
   const mensajeDiv = document.getElementById('p-mensaje');
   const boton = document.getElementById('p-generar');
   const nombre = document.getElementById('p-nombre').value.trim();
+  const condicionesMedicas = document.getElementById('p-condiciones').value.trim();
   const peso = document.getElementById('p-peso').value;
   const edad = document.getElementById('p-edad').value;
 
@@ -305,11 +313,13 @@ async function generarRutina() {
       nivel: 'intermedio',
       metas: perfilForm.metas,
       lesiones: perfilForm.lesiones,
+      condiciones_medicas: condicionesMedicas || null,
       dias_disponibles: perfilForm.dias,
       equipo_disponible: equipoDisponible,
       evitar_maquinas: perfilForm.evitarMaquinas,
     });
     if (perfilError) throw new Error(`No se pudo guardar tu perfil: ${perfilError.message}`);
+    perfilForm.condicionesMedicas = condicionesMedicas;
     perfilForm.nombre = nombre;
     const tituloEl = document.querySelector('#app h1.titulo');
     if (tituloEl && nombre) tituloEl.textContent = `Hola, ${nombre} 👋`;
@@ -376,7 +386,7 @@ async function cargarRutina() {
   const userId = estado.sesion.user.id;
 
   const { data: perfilExistente } = await supabase
-    .from('perfiles').select('nombre, peso_kg, edad, metas, lesiones, dias_disponibles, evitar_maquinas')
+    .from('perfiles').select('nombre, peso_kg, edad, metas, lesiones, condiciones_medicas, dias_disponibles, evitar_maquinas')
     .eq('id', userId).maybeSingle();
   if (perfilExistente) {
     perfilForm.nombre = perfilExistente.nombre || '';
@@ -384,6 +394,7 @@ async function cargarRutina() {
     perfilForm.edad = perfilExistente.edad ?? '';
     perfilForm.metas = perfilExistente.metas || perfilForm.metas;
     perfilForm.lesiones = perfilExistente.lesiones || perfilForm.lesiones;
+    perfilForm.condicionesMedicas = perfilExistente.condiciones_medicas || '';
     perfilForm.dias = perfilExistente.dias_disponibles || perfilForm.dias;
     perfilForm.evitarMaquinas = perfilExistente.evitar_maquinas || false;
 
