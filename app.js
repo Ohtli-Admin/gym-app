@@ -214,6 +214,7 @@ function render() {
   }
 
   if (estado.pantalla === 'onboarding') renderOnboarding();
+  else if (estado.pantalla === 'generador') renderGenerador();
   else if (estado.pantalla === 'rutina') renderRutina();
   else if (estado.pantalla === 'abdomen') renderAbdomen();
   else if (estado.pantalla === 'cardio') renderCardio();
@@ -228,10 +229,10 @@ function renderNav() {
   navContainer.innerHTML = `
     <div class="nav-inferior">
       <button class="nav-item ${estado.pantalla === 'onboarding' ? 'activo' : ''}" data-nav="onboarding"><span class="icono">👤</span>Perfil</button>
+      <button class="nav-item ${estado.pantalla === 'generador' ? 'activo' : ''}" data-nav="generador"><span class="icono">⚙️</span>Generador</button>
       <button class="nav-item ${estado.pantalla === 'rutina' ? 'activo' : ''}" data-nav="rutina"><span class="icono">📋</span>Rutina</button>
       <button class="nav-item ${estado.pantalla === 'abdomen' ? 'activo' : ''}" data-nav="abdomen"><span class="icono">🔥</span>Abdomen</button>
       <button class="nav-item ${estado.pantalla === 'cardio' ? 'activo' : ''}" data-nav="cardio"><span class="icono">🏃</span>Cardio</button>
-      <button class="nav-item ${estado.pantalla === 'registro' ? 'activo' : ''}" data-nav="registro"><span class="icono">✏️</span>Registro</button>
       <button class="nav-item ${estado.pantalla === 'extra' ? 'activo' : ''}" data-nav="extra"><span class="icono">🧗</span>Extra</button>
       <button class="nav-item ${estado.pantalla === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
       <button class="nav-item" data-nav="salir"><span class="icono">🚪</span>Salir</button>
@@ -326,7 +327,7 @@ function renderOnboarding() {
   app.appendChild(h(`
     <div>
       <h1 class="titulo">${perfilForm.nombre ? `Hola, ${perfilForm.nombre} 👋` : 'Cuéntanos de ti'}</h1>
-      <p class="subtitulo">Esto define tu rutina inicial</p>
+      <p class="subtitulo">Tus datos básicos — las preferencias de rutina están en la pestaña Generador</p>
       <div class="campo">
         <label class="etiqueta">Tu nombre</label>
         <input type="text" id="p-nombre" placeholder="¿Cómo te llamas?" value="${perfilForm.nombre}" />
@@ -335,32 +336,9 @@ function renderOnboarding() {
         <div><label class="etiqueta">Peso (kg)</label><input type="number" id="p-peso" placeholder="70" value="${perfilForm.peso}" /></div>
         <div><label class="etiqueta">Edad</label><input type="number" id="p-edad" placeholder="28" value="${perfilForm.edad}" /></div>
       </div>
-      <label class="etiqueta">Tus metas (hasta ${MAX_METAS})</label>
-      <div class="chip-grid" id="p-metas"></div>
-      <div id="p-prioridad"></div>
-      <label class="etiqueta">¿Alguna lesión o limitación? (rápido, general)</label>
-      <div class="chip-grid" id="p-lesiones"></div>
-      <div class="campo">
-        <label class="etiqueta">Condiciones médicas específicas (opcional, pero importante)</label>
-        <input type="text" id="p-condiciones" placeholder="Ej: fusión L5-S1 con tornillos, tendinopatía de supraespinoso..." value="${perfilForm.condicionesMedicas}" />
-        <p class="subtitulo" style="margin-top:6px;margin-bottom:0">
-          Entre más específico seas, mejor puede la IA evitar movimientos de riesgo. Esto NO sustituye la valoración de tu médico o fisioterapeuta — compártelo con ellos antes de entrenar zonas afectadas.
-        </p>
-      </div>
-      <div class="toggle-fila ${perfilForm.evitarMaquinas ? 'activo' : ''}" id="p-evitar-maquinas">
-        <div class="toggle-dot"></div>
-        <div class="toggle-texto">
-          <strong>Priorizar equipo con más disponibilidad</strong>
-          <span>Barra, mancuernas, polea y peso corporal en vez de máquinas — útil en horas pico.</span>
-        </div>
-      </div>
-      <label class="etiqueta">Días de gym (fuerza/abdomen) por semana: <span id="p-dias-num">${perfilForm.dias}</span></label>
-      <div class="chip-grid" id="p-dias"></div>
-      <label class="etiqueta">Días de cardio por semana: <span id="p-dias-cardio-num">${perfilForm.diasCardio}</span></label>
-      <div class="chip-grid" id="p-dias-cardio"></div>
       <div id="p-mensaje"></div>
       <button class="boton-primario" id="p-guardar">Guardar perfil</button>
-      <p class="subtitulo" style="margin-top:8px">Para generar o regenerar tu rutina, ve a la pestaña Rutina, Abdomen o Cardio — ahí encontrarás el botón correspondiente.</p>
+      <p class="subtitulo" style="margin-top:8px">Para configurar metas, lesiones, condición médica y generar tu rutina, ve a la pestaña <strong>Generador</strong>.</p>
 
       <h2 class="titulo" style="font-size:16px;margin-top:30px;margin-bottom:2px">Tu peso corporal</h2>
       <p class="subtitulo">Independiente del peso que usa la rutina — esto es tu historial en el tiempo</p>
@@ -368,78 +346,6 @@ function renderOnboarding() {
       <div id="peso-grafica"></div>
       <div id="peso-lista"></div>
     </div>`));
-
-  const metasDiv = document.getElementById('p-metas');
-  const prioridadDiv = document.getElementById('p-prioridad');
-
-  function pintarMetas() {
-    metasDiv.innerHTML = METAS.map((m) => {
-      const sel = perfilForm.metas.includes(m);
-      const deshab = !sel && perfilForm.metas.length >= MAX_METAS;
-      return `<button class="chip ${sel ? 'activo' : ''}" data-meta="${m}" ${deshab ? 'disabled' : ''}>${m}</button>`;
-    }).join('');
-    metasDiv.querySelectorAll('[data-meta]').forEach((btn) => {
-      btn.onclick = () => {
-        const m = btn.dataset.meta;
-        if (perfilForm.metas.includes(m)) perfilForm.metas = perfilForm.metas.filter((x) => x !== m);
-        else if (perfilForm.metas.length < MAX_METAS) perfilForm.metas = [...perfilForm.metas, m];
-        pintarMetas();
-        pintarPrioridad();
-      };
-    });
-  }
-
-  function pintarPrioridad() {
-    if (perfilForm.metas.length <= 1) { prioridadDiv.innerHTML = ''; return; }
-    prioridadDiv.innerHTML = `
-      <label class="etiqueta">¿Cuál es tu prioridad principal?</label>
-      <div class="chip-grid">
-        ${perfilForm.metas.map((m, i) => `<button class="chip ${i === 0 ? 'activo' : ''}" data-prio="${m}">${i === 0 ? '★ ' : ''}${m}</button>`).join('')}
-      </div>`;
-    prioridadDiv.querySelectorAll('[data-prio]').forEach((btn) => {
-      btn.onclick = () => {
-        const m = btn.dataset.prio;
-        perfilForm.metas = [m, ...perfilForm.metas.filter((x) => x !== m)];
-        pintarMetas();
-        pintarPrioridad();
-      };
-    });
-  }
-
-  const lesionesDiv = document.getElementById('p-lesiones');
-  lesionesDiv.innerHTML = LESIONES_COMUNES.map((l) => {
-    const sel = perfilForm.lesiones.includes(l);
-    return `<button class="chip ${sel ? 'activo' : ''}" data-lesion="${l}">${l}${sel ? ' ✕' : ''}</button>`;
-  }).join('');
-  lesionesDiv.querySelectorAll('[data-lesion]').forEach((btn) => {
-    btn.onclick = () => {
-      const l = btn.dataset.lesion;
-      perfilForm.lesiones = perfilForm.lesiones.includes(l)
-        ? perfilForm.lesiones.filter((x) => x !== l)
-        : [...perfilForm.lesiones, l];
-      renderOnboarding();
-    };
-  });
-
-  document.getElementById('p-evitar-maquinas').onclick = () => {
-    perfilForm.evitarMaquinas = !perfilForm.evitarMaquinas;
-    renderOnboarding();
-  };
-
-  const diasDiv = document.getElementById('p-dias');
-  diasDiv.innerHTML = [1, 2, 3, 4, 5, 6].map((d) => `<button class="chip ${perfilForm.dias === d ? 'activo' : ''}" data-dia="${d}">${d}</button>`).join('');
-  diasDiv.querySelectorAll('[data-dia]').forEach((btn) => {
-    btn.onclick = () => { perfilForm.dias = Number(btn.dataset.dia); renderOnboarding(); };
-  });
-
-  const diasCardioDiv = document.getElementById('p-dias-cardio');
-  diasCardioDiv.innerHTML = [1, 2, 3, 4, 5, 6, 7].map((d) => `<button class="chip ${perfilForm.diasCardio === d ? 'activo' : ''}" data-dia-cardio="${d}">${d}</button>`).join('');
-  diasCardioDiv.querySelectorAll('[data-dia-cardio]').forEach((btn) => {
-    btn.onclick = () => { perfilForm.diasCardio = Number(btn.dataset.diaCardio); renderOnboarding(); };
-  });
-
-  pintarMetas();
-  pintarPrioridad();
 
   document.getElementById('p-guardar').onclick = guardarPerfil;
   renderPesoCorporal();
@@ -449,7 +355,6 @@ async function guardarPerfil() {
   const mensajeDiv = document.getElementById('p-mensaje');
   const boton = document.getElementById('p-guardar');
   const nombre = document.getElementById('p-nombre').value.trim();
-  const condicionesMedicas = document.getElementById('p-condiciones').value.trim();
   const peso = document.getElementById('p-peso').value;
   const edad = document.getElementById('p-edad').value;
 
@@ -464,29 +369,24 @@ async function guardarPerfil() {
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    const equipoDisponible = ['barra', 'mancuernas', 'polea', 'maquina', 'peso_corporal'];
 
+    // Solo nombre/peso/edad — 'upsert' porque el registro podría no existir
+    // aún (usuario nuevo); si ya existe, esto NO toca metas/lesiones/etc.
+    // que se guardan desde Generador, gracias a que Postgres solo actualiza
+    // las columnas que se le pasan explícitamente.
     const { error: perfilError } = await supabase.from('perfiles').upsert({
       id: user.id,
       nombre: nombre || null,
       peso_kg: parseFloat(peso),
       edad: parseInt(edad, 10),
       nivel: 'intermedio',
-      metas: perfilForm.metas,
-      lesiones: perfilForm.lesiones,
-      condiciones_medicas: condicionesMedicas || null,
-      dias_disponibles: perfilForm.dias,
-      dias_disponibles_cardio: perfilForm.diasCardio,
-      equipo_disponible: equipoDisponible,
-      evitar_maquinas: perfilForm.evitarMaquinas,
     });
     if (perfilError) throw new Error(`No se pudo guardar tu perfil: ${perfilError.message}`);
-    perfilForm.condicionesMedicas = condicionesMedicas;
     perfilForm.nombre = nombre;
     const tituloEl = document.querySelector('#app h1.titulo');
     if (tituloEl && nombre) tituloEl.textContent = `Hola, ${nombre} 👋`;
 
-    mensajeDiv.innerHTML = '<div class="mensaje info">Perfil guardado. Ve a Rutina, Abdomen o Cardio para generar con estos datos.</div>';
+    mensajeDiv.innerHTML = '<div class="mensaje info">Perfil guardado.</div>';
   } catch (err) {
     mensajeDiv.innerHTML = `<div class="mensaje error">${err.message}</div>`;
   } finally {
@@ -619,7 +519,7 @@ async function cargarRutina() {
     // borraríamos el mensaje de éxito justo después de generar una rutina.
     if (!perfilPrecargado) {
       perfilPrecargado = true;
-      if (estado.pantalla === 'onboarding') renderOnboarding();
+      if (estado.pantalla === 'onboarding' || estado.pantalla === 'generador') render();
     }
   }
 
@@ -901,7 +801,7 @@ function renderCardio() {
 
   const botonGenerar = `
     <button class="boton-secundario" id="btn-generar-cardio" style="text-align:left;padding-left:0">
-      🏃 ${c.dias && c.dias.length > 0 ? 'Regenerar' : 'Generar'} plan de cardio con IA
+      ⚙️ Ir a Generador (${c.dias && c.dias.length > 0 ? 'regenerar' : 'generar'} plan de cardio)
     </button>
     <div id="cardio-gen-mensaje"></div>`;
 
@@ -917,7 +817,7 @@ function renderCardio() {
         <div class="vacio"><div class="icono-grande">🏃</div><p>Aún no tienes plan de cardio.</p></div>
         ${botonGenerar}
       </div>`));
-    document.getElementById('btn-generar-cardio').onclick = generarRutinaCardio;
+    document.getElementById('btn-generar-cardio').onclick = irAGenerador;
     return;
   }
 
@@ -956,7 +856,7 @@ function renderCardio() {
     </div>`));
   app.appendChild(cont);
 
-  document.getElementById('btn-generar-cardio').onclick = generarRutinaCardio;
+  document.getElementById('btn-generar-cardio').onclick = irAGenerador;
   document.getElementById('btn-regenerar-dia-cardio').onclick = () => regenerarDiaCardio(dia.dia);
 
   const tabsDiv = document.getElementById('tabs-dias-cardio');
@@ -1022,34 +922,243 @@ async function marcarCardioCompletado(diaNumero) {
   await cargarRutinaCardio();
 }
 
-async function generarRutinaCardio() {
-  abrirModalGeneracion({
-    titulo: 'Generar plan de cardio',
-    tipoDias: 'cardio',
-    onGenerar: async () => {
-      const boton = document.getElementById('btn-generar-cardio');
-      const mensajeDiv = document.getElementById('cardio-gen-mensaje');
-      boton.disabled = true;
-      boton.innerHTML = '<div class="spinner"></div>';
-      if (mensajeDiv) mensajeDiv.innerHTML = '';
+function irAGenerador() {
+  estado.pantalla = 'generador';
+  render();
+}
 
-      const { data, error } = await supabase.functions.invoke('generate-cardio-plan');
+// =========================================================================
+// Pantalla Generador — configura preferencias y genera/regenera cada tipo
+// de rutina, todo en un solo lugar.
+// =========================================================================
+function renderGenerador() {
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      <h1 class="titulo">Generador</h1>
+      <p class="subtitulo">Ajusta esto cuando tu situación cambie (ej. una lesión que ya sanó), y genera cada rutina abajo.</p>
 
-      if (error) {
-        let detalle = error.message;
-        try {
-          const cuerpo = await error.context.json();
-          detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
-        } catch (e) {}
-        if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
-        boton.disabled = false;
-        boton.textContent = '🏃 Generar plan de cardio con IA';
-        return;
-      }
+      <label class="etiqueta">Tus metas (hasta ${MAX_METAS})</label>
+      <div class="chip-grid" id="g-metas"></div>
+      <div id="g-prioridad"></div>
 
-      await cargarRutinaCardio();
-    },
-  });
+      <label class="etiqueta">¿Alguna lesión o limitación? (rápido, general)</label>
+      <div class="chip-grid" id="g-lesiones"></div>
+
+      <div class="campo">
+        <label class="etiqueta">Condiciones médicas específicas (opcional, pero importante)</label>
+        <textarea class="input-modal" id="g-condiciones">${perfilForm.condicionesMedicas}</textarea>
+        <p class="subtitulo" style="margin-top:6px;margin-bottom:0">
+          Esto NO sustituye la valoración de tu médico o fisioterapeuta.
+        </p>
+      </div>
+
+      <div class="toggle-fila ${perfilForm.evitarMaquinas ? 'activo' : ''}" id="g-evitar-maquinas">
+        <div class="toggle-dot"></div>
+        <div class="toggle-texto">
+          <strong>Priorizar equipo con más disponibilidad</strong>
+          <span>Barra, mancuernas, polea y peso corporal en vez de máquinas.</span>
+        </div>
+      </div>
+
+      <label class="etiqueta">Días de gym (fuerza/abdomen) por semana: <span id="g-dias-num">${perfilForm.dias}</span></label>
+      <div class="chip-grid" id="g-dias"></div>
+      <label class="etiqueta">Días de cardio por semana: <span id="g-dias-cardio-num">${perfilForm.diasCardio}</span></label>
+      <div class="chip-grid" id="g-dias-cardio"></div>
+
+      <div id="g-mensaje"></div>
+      <button class="boton-primario" id="g-guardar">Guardar preferencias</button>
+
+      <h2 class="titulo" style="font-size:16px;margin-top:28px;margin-bottom:10px">Generar rutinas</h2>
+
+      <div class="tarjeta-sesion">
+        <div class="fecha">💪 Fuerza</div>
+        <button class="boton-secundario" id="g-btn-fuerza" style="text-align:left;padding-left:0">${estado.dias?.length ? 'Regenerar' : 'Generar'} rutina de fuerza</button>
+        <div id="g-mensaje-fuerza"></div>
+      </div>
+      <div class="tarjeta-sesion">
+        <div class="fecha">🔥 Abdomen</div>
+        <button class="boton-secundario" id="g-btn-abdomen" style="text-align:left;padding-left:0">${estado.abdomen.dias?.length ? 'Regenerar' : 'Generar'} rutina de abdomen</button>
+        <div id="g-mensaje-abdomen"></div>
+      </div>
+      <div class="tarjeta-sesion">
+        <div class="fecha">🏃 Cardio</div>
+        <button class="boton-secundario" id="g-btn-cardio" style="text-align:left;padding-left:0">${estado.cardio.dias?.length ? 'Regenerar' : 'Generar'} plan de cardio</button>
+        <div id="g-mensaje-cardio"></div>
+      </div>
+    </div>`));
+
+  const metasDiv = document.getElementById('g-metas');
+  const prioridadDiv = document.getElementById('g-prioridad');
+
+  function pintarMetas() {
+    metasDiv.innerHTML = METAS.map((m) => {
+      const sel = perfilForm.metas.includes(m);
+      const deshab = !sel && perfilForm.metas.length >= MAX_METAS;
+      return `<button class="chip ${sel ? 'activo' : ''}" data-meta="${m}" ${deshab ? 'disabled' : ''}>${m}</button>`;
+    }).join('');
+    metasDiv.querySelectorAll('[data-meta]').forEach((btn) => {
+      btn.onclick = () => {
+        const m = btn.dataset.meta;
+        if (perfilForm.metas.includes(m)) perfilForm.metas = perfilForm.metas.filter((x) => x !== m);
+        else if (perfilForm.metas.length < MAX_METAS) perfilForm.metas = [...perfilForm.metas, m];
+        pintarMetas();
+        pintarPrioridad();
+      };
+    });
+  }
+
+  function pintarPrioridad() {
+    if (perfilForm.metas.length <= 1) { prioridadDiv.innerHTML = ''; return; }
+    prioridadDiv.innerHTML = `
+      <label class="etiqueta">¿Cuál es tu prioridad principal?</label>
+      <div class="chip-grid">
+        ${perfilForm.metas.map((m, i) => `<button class="chip ${i === 0 ? 'activo' : ''}" data-prio="${m}">${i === 0 ? '★ ' : ''}${m}</button>`).join('')}
+      </div>`;
+    prioridadDiv.querySelectorAll('[data-prio]').forEach((btn) => {
+      btn.onclick = () => {
+        const m = btn.dataset.prio;
+        perfilForm.metas = [m, ...perfilForm.metas.filter((x) => x !== m)];
+        pintarMetas();
+        pintarPrioridad();
+      };
+    });
+  }
+
+  const lesionesDiv = document.getElementById('g-lesiones');
+  function pintarLesiones() {
+    lesionesDiv.innerHTML = LESIONES_COMUNES.map((l) => {
+      const sel = perfilForm.lesiones.includes(l);
+      return `<button class="chip ${sel ? 'activo' : ''}" data-lesion="${l}">${l}${sel ? ' ✕' : ''}</button>`;
+    }).join('');
+    lesionesDiv.querySelectorAll('[data-lesion]').forEach((btn) => {
+      btn.onclick = () => {
+        const l = btn.dataset.lesion;
+        perfilForm.lesiones = perfilForm.lesiones.includes(l)
+          ? perfilForm.lesiones.filter((x) => x !== l)
+          : [...perfilForm.lesiones, l];
+        pintarLesiones();
+      };
+    });
+  }
+  pintarLesiones();
+
+  document.getElementById('g-evitar-maquinas').onclick = () => {
+    perfilForm.evitarMaquinas = !perfilForm.evitarMaquinas;
+    renderGenerador();
+  };
+
+  const diasDiv = document.getElementById('g-dias');
+  function pintarDias() {
+    diasDiv.innerHTML = [1, 2, 3, 4, 5, 6].map((d) => `<button class="chip ${perfilForm.dias === d ? 'activo' : ''}" data-dia="${d}">${d}</button>`).join('');
+    document.getElementById('g-dias-num').textContent = perfilForm.dias;
+    diasDiv.querySelectorAll('[data-dia]').forEach((btn) => {
+      btn.onclick = () => { perfilForm.dias = Number(btn.dataset.dia); pintarDias(); };
+    });
+  }
+  pintarDias();
+
+  const diasCardioDiv = document.getElementById('g-dias-cardio');
+  function pintarDiasCardio() {
+    diasCardioDiv.innerHTML = [1, 2, 3, 4, 5, 6, 7].map((d) => `<button class="chip ${perfilForm.diasCardio === d ? 'activo' : ''}" data-dia-cardio="${d}">${d}</button>`).join('');
+    document.getElementById('g-dias-cardio-num').textContent = perfilForm.diasCardio;
+    diasCardioDiv.querySelectorAll('[data-dia-cardio]').forEach((btn) => {
+      btn.onclick = () => { perfilForm.diasCardio = Number(btn.dataset.diaCardio); pintarDiasCardio(); };
+    });
+  }
+  pintarDiasCardio();
+
+  pintarMetas();
+  pintarPrioridad();
+
+  document.getElementById('g-guardar').onclick = guardarPreferenciasGenerador;
+  document.getElementById('g-btn-fuerza').onclick = (e) => invocarGeneracionFuerza(e.target, document.getElementById('g-mensaje-fuerza'));
+  document.getElementById('g-btn-abdomen').onclick = () => generarRutinaAbdomenDesdeGenerador();
+  document.getElementById('g-btn-cardio').onclick = () => generarRutinaCardioDesdeGenerador();
+}
+
+async function guardarPreferenciasGenerador() {
+  const mensajeDiv = document.getElementById('g-mensaje');
+  const boton = document.getElementById('g-guardar');
+  const condicionesMedicas = document.getElementById('g-condiciones').value.trim();
+  mensajeDiv.innerHTML = '';
+  boton.disabled = true;
+  boton.innerHTML = '<div class="spinner"></div>';
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const equipoDisponible = ['barra', 'mancuernas', 'polea', 'maquina', 'peso_corporal'];
+
+  const { error } = await supabase.from('perfiles').update({
+    metas: perfilForm.metas,
+    lesiones: perfilForm.lesiones,
+    condiciones_medicas: condicionesMedicas || null,
+    dias_disponibles: perfilForm.dias,
+    dias_disponibles_cardio: perfilForm.diasCardio,
+    equipo_disponible: equipoDisponible,
+    evitar_maquinas: perfilForm.evitarMaquinas,
+  }).eq('id', user.id);
+
+  boton.disabled = false;
+  boton.textContent = 'Guardar preferencias';
+
+  if (error) {
+    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo guardar: ${error.message}</div>`;
+    return;
+  }
+  perfilForm.condicionesMedicas = condicionesMedicas;
+  mensajeDiv.innerHTML = '<div class="mensaje info">Preferencias guardadas.</div>';
+}
+
+async function generarRutinaAbdomenDesdeGenerador() {
+  const boton = document.getElementById('g-btn-abdomen');
+  const mensajeDiv = document.getElementById('g-mensaje-abdomen');
+  boton.disabled = true;
+  boton.innerHTML = '<div class="spinner"></div>';
+  mensajeDiv.innerHTML = '';
+
+  const { data, error } = await supabase.functions.invoke('generate-routine', { body: { tipo: 'abdominales' } });
+
+  boton.disabled = false;
+  boton.textContent = estado.abdomen.dias?.length ? 'Regenerar rutina de abdomen' : 'Generar rutina de abdomen';
+
+  if (error) {
+    let detalle = error.message;
+    try {
+      const cuerpo = await error.context.json();
+      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
+    } catch (e) {}
+    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
+    return;
+  }
+
+  mensajeDiv.innerHTML = `<div class="mensaje info">¡Listo! ${data.dias.length} días generados.</div>`;
+  await cargarRutinaAbdomen();
+}
+
+async function generarRutinaCardioDesdeGenerador() {
+  const boton = document.getElementById('g-btn-cardio');
+  const mensajeDiv = document.getElementById('g-mensaje-cardio');
+  boton.disabled = true;
+  boton.innerHTML = '<div class="spinner"></div>';
+  mensajeDiv.innerHTML = '';
+
+  const { data, error } = await supabase.functions.invoke('generate-cardio-plan');
+
+  boton.disabled = false;
+  boton.textContent = estado.cardio.dias?.length ? 'Regenerar plan de cardio' : 'Generar plan de cardio';
+
+  if (error) {
+    let detalle = error.message;
+    try {
+      const cuerpo = await error.context.json();
+      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
+    } catch (e) {}
+    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
+    return;
+  }
+
+  mensajeDiv.innerHTML = `<div class="mensaje info">¡Listo! ${data.dias.length} días generados.</div>`;
+  await cargarRutinaCardio();
 }
 
 // =========================================================================
@@ -1073,20 +1182,9 @@ function renderRutina() {
           <div class="icono-grande">📋</div>
           <p>Aún no tienes rutina de fuerza.</p>
         </div>
-        <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">💪 Generar mi rutina con IA</button>
-        <div id="fuerza-gen-mensaje"></div>
+        <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">⚙️ Ir a Generador</button>
       </div>`));
-    document.getElementById('btn-generar-fuerza').dataset.textoOriginal = '💪 Generar mi rutina con IA';
-    document.getElementById('btn-generar-fuerza').onclick = () => {
-      abrirModalGeneracion({
-        titulo: 'Generar rutina de fuerza',
-        tipoDias: 'gym',
-        onGenerar: () => invocarGeneracionFuerza(
-          document.getElementById('btn-generar-fuerza'),
-          document.getElementById('fuerza-gen-mensaje'),
-        ),
-      });
-    };
+    document.getElementById('btn-generar-fuerza').onclick = () => { estado.pantalla = 'generador'; render(); };
     return;
   }
 
@@ -1111,25 +1209,14 @@ function renderRutina() {
         <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
       </div>
       <div class="tabs-dias" id="tabs-dias"></div>
-      <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">💪 Regenerar toda mi rutina con IA</button>
-      <div id="fuerza-gen-mensaje"></div>
+      <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">⚙️ Ir a Generador (para regenerar toda la rutina)</button>
       <button class="boton-secundario" id="btn-regenerar-dia" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
       <div id="regen-mensaje"></div>
       <div id="lista-ejercicios"></div>
     </div>`));
   app.appendChild(cont);
 
-  document.getElementById('btn-generar-fuerza').dataset.textoOriginal = '💪 Regenerar toda mi rutina con IA';
-  document.getElementById('btn-generar-fuerza').onclick = () => {
-    abrirModalGeneracion({
-      titulo: 'Regenerar TODA tu rutina de fuerza',
-      tipoDias: 'gym',
-      onGenerar: () => invocarGeneracionFuerza(
-        document.getElementById('btn-generar-fuerza'),
-        document.getElementById('fuerza-gen-mensaje'),
-      ),
-    });
-  };
+  document.getElementById('btn-generar-fuerza').onclick = () => { estado.pantalla = 'generador'; render(); };
 
   document.getElementById('btn-regenerar-dia').onclick = () => regenerarDia(dia.dia);
 
@@ -1183,7 +1270,7 @@ function renderAbdomen() {
 
   const botonGenerar = `
     <button class="boton-secundario" id="btn-generar-abdomen" style="text-align:left;padding-left:0">
-      🔥 ${ab.dias && ab.dias.length > 0 ? 'Regenerar' : 'Generar'} rutina de abdomen con IA
+      ⚙️ Ir a Generador (${ab.dias && ab.dias.length > 0 ? 'regenerar' : 'generar'} rutina de abdomen)
     </button>
     <div id="abdomen-gen-mensaje"></div>`;
 
@@ -1203,7 +1290,7 @@ function renderAbdomen() {
         </div>
         ${botonGenerar}
       </div>`));
-    document.getElementById('btn-generar-abdomen').onclick = generarRutinaAbdomen;
+    document.getElementById('btn-generar-abdomen').onclick = irAGenerador;
     return;
   }
 
@@ -1235,7 +1322,7 @@ function renderAbdomen() {
     </div>`));
   app.appendChild(cont);
 
-  document.getElementById('btn-generar-abdomen').onclick = generarRutinaAbdomen;
+  document.getElementById('btn-generar-abdomen').onclick = irAGenerador;
   document.getElementById('btn-regenerar-dia-ab').onclick = () => regenerarDia(dia.dia, 'abdominales');
 
   const tabsDiv = document.getElementById('tabs-dias-ab');
@@ -1275,36 +1362,6 @@ function renderAbdomen() {
           ph.replaceWith(img);
         }
       });
-  });
-}
-
-async function generarRutinaAbdomen() {
-  abrirModalGeneracion({
-    titulo: 'Generar rutina de abdomen',
-    tipoDias: 'gym',
-    onGenerar: async () => {
-      const boton = document.getElementById('btn-generar-abdomen');
-      const mensajeDiv = document.getElementById('abdomen-gen-mensaje');
-      boton.disabled = true;
-      boton.innerHTML = '<div class="spinner"></div>';
-      if (mensajeDiv) mensajeDiv.innerHTML = '';
-
-      const { data, error } = await supabase.functions.invoke('generate-routine', { body: { tipo: 'abdominales' } });
-
-      if (error) {
-        let detalle = error.message;
-        try {
-          const cuerpo = await error.context.json();
-          detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
-        } catch (e) {}
-        if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
-        boton.disabled = false;
-        boton.textContent = '🔥 Generar rutina de abdomen con IA';
-        return;
-      }
-
-      await cargarRutinaAbdomen();
-    },
   });
 }
 
