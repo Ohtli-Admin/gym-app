@@ -1102,13 +1102,14 @@ async function renderHistorial() {
 const TIPOS_EXTRA = [
   { valor: 'cardio', etiqueta: 'Cardio', icono: '🏃' },
   { valor: 'abdominales', etiqueta: 'Abdomen', icono: '🔥' },
+  { valor: 'calistenia', etiqueta: 'Calistenia/Casa', icono: '🏠' },
   { valor: 'escalada', etiqueta: 'Escalada', icono: '🧗' },
   { valor: 'otro', etiqueta: 'Otro', icono: '➕' },
 ];
 let tipoExtraActivo = 'cardio';
 
 function esTipoEstructurado(tipo) {
-  return tipo === 'abdominales' || tipo === 'escalada';
+  return tipo === 'abdominales' || tipo === 'escalada' || tipo === 'calistenia';
 }
 
 async function renderExtra() {
