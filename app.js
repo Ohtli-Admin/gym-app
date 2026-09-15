@@ -396,19 +396,24 @@ async function invocarGeneracionFuerza(boton, mensajeDiv) {
 // =========================================================================
 // Cargar rutina + estadísticas de días
 // =========================================================================
-async function regenerarDia(diaNumero) {
+async function regenerarDia(diaNumero, tipo) {
+  const esAbdomen = tipo === 'abdominales';
   const confirmado = confirm(
-    `¿Regenerar el Día ${diaNumero} con IA? Esto reemplaza los ejercicios de ese día (los demás días no se tocan) y consume una llamada a Claude.`,
+    `¿Regenerar el Día ${diaNumero} de ${esAbdomen ? 'abdomen' : 'fuerza'} con IA? Esto reemplaza los ejercicios de ese día (los demás días no se tocan) y consume una llamada a Claude.`,
   );
   if (!confirmado) return;
 
-  const btn = document.getElementById('btn-regenerar-dia');
-  const mensajeDiv = document.getElementById('regen-mensaje');
+  const btnId = esAbdomen ? 'btn-regenerar-dia-ab' : 'btn-regenerar-dia';
+  const mensajeId = esAbdomen ? 'regen-mensaje-ab' : 'regen-mensaje';
+  const btn = document.getElementById(btnId);
+  const mensajeDiv = document.getElementById(mensajeId);
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div>';
   mensajeDiv.innerHTML = '';
 
-  const { data, error } = await supabase.functions.invoke('regenerate-day', { body: { dia: diaNumero } });
+  const { data, error } = await supabase.functions.invoke('regenerate-day', {
+    body: { dia: diaNumero, tipo: esAbdomen ? 'abdominales' : 'fuerza' },
+  });
 
   btn.disabled = false;
   btn.textContent = '🔄 Regenerar solo este día con IA';
@@ -424,7 +429,39 @@ async function regenerarDia(diaNumero) {
   }
 
   mensajeDiv.innerHTML = `<div class="mensaje info">Día ${data.dia} regenerado: ${data.nombre_dia}.</div>`;
-  await cargarRutina();
+  if (esAbdomen) await cargarRutinaAbdomen();
+  else await cargarRutina();
+}
+
+async function regenerarDiaCardio(diaNumero) {
+  const confirmado = confirm(
+    `¿Regenerar el Día ${diaNumero} de cardio con IA? Esto reemplaza las fases de ese día y consume una llamada a Claude.`,
+  );
+  if (!confirmado) return;
+
+  const btn = document.getElementById('btn-regenerar-dia-cardio');
+  const mensajeDiv = document.getElementById('regen-mensaje-cardio');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>';
+  mensajeDiv.innerHTML = '';
+
+  const { data, error } = await supabase.functions.invoke('regenerate-cardio-day', { body: { dia: diaNumero } });
+
+  btn.disabled = false;
+  btn.textContent = '🔄 Regenerar solo este día con IA';
+
+  if (error) {
+    let detalle = error.message;
+    try {
+      const cuerpo = await error.context.json();
+      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
+    } catch (e) {}
+    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo regenerar el día: ${detalle}</div>`;
+    return;
+  }
+
+  mensajeDiv.innerHTML = `<div class="mensaje info">Día ${data.dia} regenerado: ${data.nombre_dia}.</div>`;
+  await cargarRutinaCardio();
 }
 
 async function cargarRutina() {
@@ -779,6 +816,8 @@ function renderCardio() {
       </div>
       <div class="tabs-dias" id="tabs-dias-cardio"></div>
       ${botonGenerar}
+      <button class="boton-secundario" id="btn-regenerar-dia-cardio" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
+      <div id="regen-mensaje-cardio"></div>
       <div id="fases-cardio"></div>
       <div id="cardio-mensaje"></div>
       <button class="boton-primario" id="btn-marcar-cardio" ${yaCompletadoHoy ? 'disabled' : ''}>
@@ -788,6 +827,7 @@ function renderCardio() {
   app.appendChild(cont);
 
   document.getElementById('btn-generar-cardio').onclick = generarRutinaCardio;
+  document.getElementById('btn-regenerar-dia-cardio').onclick = () => regenerarDiaCardio(dia.dia);
 
   const tabsDiv = document.getElementById('tabs-dias-cardio');
   c.dias.forEach((d, idx) => {
@@ -1035,11 +1075,14 @@ function renderAbdomen() {
       </div>
       <div class="tabs-dias" id="tabs-dias-ab"></div>
       ${botonGenerar}
+      <button class="boton-secundario" id="btn-regenerar-dia-ab" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
+      <div id="regen-mensaje-ab"></div>
       <div id="lista-ejercicios-ab"></div>
     </div>`));
   app.appendChild(cont);
 
   document.getElementById('btn-generar-abdomen').onclick = generarRutinaAbdomen;
+  document.getElementById('btn-regenerar-dia-ab').onclick = () => regenerarDia(dia.dia, 'abdominales');
 
   const tabsDiv = document.getElementById('tabs-dias-ab');
   ab.dias.forEach((d, idx) => {
