@@ -12,6 +12,18 @@ const estado = {
   errorRutina: null,
   diaActivo: 0,
   ejercicioActivo: null,
+  pantallaOrigenRegistro: 'rutina', // a dónde regresar desde Registro: 'rutina' o 'abdomen'
+  abdomen: {
+    dias: null,
+    rutinaId: null,
+    conteoDias: {},
+    cargando: false,
+    error: null,
+    diaActivo: 0,
+    semanaActual: [],
+    diasDisponibles: 0,
+    tasaConsistenciaReciente: null,
+  },
 };
 
 const LESIONES_COMUNES = ['Rodilla', 'Hombro', 'Espalda baja', 'Muñeca', 'Tobillo', 'Cadera'];
@@ -67,6 +79,7 @@ function render() {
 
   if (estado.pantalla === 'onboarding') renderOnboarding();
   else if (estado.pantalla === 'rutina') renderRutina();
+  else if (estado.pantalla === 'abdomen') renderAbdomen();
   else if (estado.pantalla === 'registro') renderRegistro();
   else if (estado.pantalla === 'historial') renderHistorial();
   else if (estado.pantalla === 'extra') renderExtra();
@@ -79,6 +92,7 @@ function renderNav() {
     <div class="nav-inferior">
       <button class="nav-item ${estado.pantalla === 'onboarding' ? 'activo' : ''}" data-nav="onboarding"><span class="icono">👤</span>Perfil</button>
       <button class="nav-item ${estado.pantalla === 'rutina' ? 'activo' : ''}" data-nav="rutina"><span class="icono">📋</span>Rutina</button>
+      <button class="nav-item ${estado.pantalla === 'abdomen' ? 'activo' : ''}" data-nav="abdomen"><span class="icono">🔥</span>Abdomen</button>
       <button class="nav-item ${estado.pantalla === 'registro' ? 'activo' : ''}" data-nav="registro"><span class="icono">✏️</span>Registro</button>
       <button class="nav-item ${estado.pantalla === 'extra' ? 'activo' : ''}" data-nav="extra"><span class="icono">🏃</span>Extra</button>
       <button class="nav-item ${estado.pantalla === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
@@ -503,6 +517,101 @@ async function cargarRutina() {
   if (estado.pantalla === 'rutina') render();
 }
 
+async function cargarRutinaAbdomen() {
+  const ab = estado.abdomen;
+  ab.cargando = true;
+  ab.error = null;
+  if (estado.pantalla === 'abdomen') render();
+
+  const userId = estado.sesion.user.id;
+
+  const { data: rutina, error: rutinaError } = await supabase
+    .from('rutinas').select('id')
+    .eq('usuario_id', userId).eq('activa', true).eq('tipo', 'abdominales')
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+  if (rutinaError) {
+    ab.error = `No se pudo cargar tu rutina de abdomen: ${rutinaError.message}`;
+    ab.cargando = false;
+    if (estado.pantalla === 'abdomen') render();
+    return;
+  }
+
+  if (!rutina) {
+    ab.rutinaId = null;
+    ab.dias = [];
+    ab.cargando = false;
+    if (estado.pantalla === 'abdomen') render();
+    return;
+  }
+
+  ab.rutinaId = rutina.id;
+
+  const { data: ejercicios, error: ejerciciosError } = await supabase
+    .from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)')
+    .eq('rutina_id', rutina.id).order('dia').order('orden');
+
+  if (ejerciciosError) {
+    ab.error = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
+    ab.cargando = false;
+    if (estado.pantalla === 'abdomen') render();
+    return;
+  }
+
+  const porDia = {};
+  for (const ej of ejercicios) {
+    if (!porDia[ej.dia]) porDia[ej.dia] = { dia: ej.dia, nombre_dia: ej.nombre_dia, ejercicios: [] };
+    porDia[ej.dia].ejercicios.push(ej);
+  }
+  ab.dias = Object.values(porDia).sort((a, b) => a.dia - b.dia);
+  if (ab.diaActivo >= ab.dias.length) ab.diaActivo = 0;
+
+  const { data: sesiones } = await supabase
+    .from('sesiones_entrenamiento').select('dia, fecha')
+    .eq('rutina_id', rutina.id).eq('usuario_id', userId);
+
+  const { data: perfil } = await supabase.from('perfiles').select('dias_disponibles').eq('id', userId).maybeSingle();
+  ab.diasDisponibles = ab.dias.length || perfil?.dias_disponibles || 0;
+
+  const conteo = {};
+  for (const d of ab.dias) conteo[d.dia] = { total: 0 };
+  const fechasVistasPorDia = {};
+  const mapaFechaDia = {};
+  const semanas = {};
+  for (const s of sesiones || []) {
+    if (s.dia == null) continue;
+    fechasVistasPorDia[s.dia] = fechasVistasPorDia[s.dia] || new Set();
+    if (!fechasVistasPorDia[s.dia].has(s.fecha)) {
+      fechasVistasPorDia[s.dia].add(s.fecha);
+      if (conteo[s.dia]) conteo[s.dia].total++;
+    }
+    mapaFechaDia[s.fecha] = s.dia;
+    const inicioSem = formatoFecha(inicioDeSemana(s.fecha));
+    semanas[inicioSem] = semanas[inicioSem] || new Set();
+    semanas[inicioSem].add(s.dia);
+  }
+  ab.conteoDias = conteo;
+
+  const hoyStr = formatoFecha(new Date());
+  const inicioActual = formatoFecha(inicioDeSemana(hoyStr));
+  const etiquetasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const celdas = [];
+  for (let i = 0; i < 7; i++) {
+    const f = new Date(inicioActual + 'T00:00:00');
+    f.setDate(f.getDate() + i);
+    const fStr = formatoFecha(f);
+    celdas.push({ etiqueta: etiquetasSemana[i], fecha: fStr, dia: mapaFechaDia[fStr] ?? null, esFuturo: fStr > hoyStr });
+  }
+  ab.semanaActual = celdas;
+
+  const clavesSemanasPasadas = Object.keys(semanas).filter((k) => k !== inicioActual).sort().slice(-4);
+  const tasas = clavesSemanasPasadas.map((k) => semanas[k].size / (ab.diasDisponibles || 1));
+  ab.tasaConsistenciaReciente = tasas.length ? tasas.reduce((a, b) => a + b, 0) / tasas.length : null;
+
+  ab.cargando = false;
+  if (estado.pantalla === 'abdomen') render();
+}
+
 // =========================================================================
 // Pantalla Rutina
 // =========================================================================
@@ -577,7 +686,12 @@ function renderRutina() {
         </div>
         <div class="chevron">›</div>
       </div>`);
-    tarjeta.onclick = () => { estado.ejercicioActivo = ej; estado.pantalla = 'registro'; render(); };
+    tarjeta.onclick = () => {
+      estado.ejercicioActivo = ej;
+      estado.pantallaOrigenRegistro = 'rutina';
+      estado.pantalla = 'registro';
+      render();
+    };
     listaDiv.appendChild(tarjeta);
 
     // Foto miniatura real, si existe (no bloquea el render de la tarjeta).
@@ -590,6 +704,134 @@ function renderRutina() {
         }
       });
   });
+}
+
+// =========================================================================
+// Pantalla Abdomen (rutina de core generada por IA, paralela a la de fuerza)
+// =========================================================================
+function renderAbdomen() {
+  app.innerHTML = '';
+  const ab = estado.abdomen;
+
+  const botonGenerar = `
+    <button class="boton-secundario" id="btn-generar-abdomen" style="text-align:left;padding-left:0">
+      🔥 ${ab.dias && ab.dias.length > 0 ? 'Regenerar' : 'Generar'} rutina de abdomen con IA
+    </button>
+    <div id="abdomen-gen-mensaje"></div>`;
+
+  if (ab.cargando) {
+    app.appendChild(h('<div class="pantalla-carga"><div class="spinner"></div></div>'));
+    return;
+  }
+  if (ab.error) {
+    app.appendChild(h(`<div class="mensaje error">${ab.error}</div>`));
+  }
+  if (!ab.dias || ab.dias.length === 0) {
+    app.appendChild(h(`
+      <div>
+        <div class="vacio">
+          <div class="icono-grande">🔥</div>
+          <p>Aún no tienes rutina de abdomen.</p>
+        </div>
+        ${botonGenerar}
+      </div>`));
+    document.getElementById('btn-generar-abdomen').onclick = generarRutinaAbdomen;
+    return;
+  }
+
+  const diasCompletadosEstaSemana = ab.semanaActual.filter((c) => c.dia != null).length;
+  const dia = ab.dias[ab.diaActivo];
+  const info = ab.conteoDias[dia.dia] || { total: 0 };
+
+  const cont = h('<div></div>');
+  cont.appendChild(h(`
+    <div>
+      <h1 class="titulo">Rutina de abdomen</h1>
+      <p class="subtitulo">${dia.nombre_dia}</p>
+      <div class="semana-calendario">
+        ${ab.semanaActual.map((c) => `
+          <div class="celda-dia ${c.dia != null ? 'hecho' : ''} ${c.esFuturo ? 'futuro' : ''}">
+            <span class="etiqueta-dia">${c.etiqueta}</span>
+            <span class="valor-dia">${c.dia != null ? 'D' + c.dia : (c.esFuturo ? '' : '—')}</span>
+          </div>`).join('')}
+      </div>
+      <p class="subtitulo" style="margin-top:-6px">Esta semana: ${diasCompletadosEstaSemana}/${ab.diasDisponibles} días planeados</p>
+      <div class="resumen-semana">
+        <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
+      </div>
+      <div class="tabs-dias" id="tabs-dias-ab"></div>
+      ${botonGenerar}
+      <div id="lista-ejercicios-ab"></div>
+    </div>`));
+  app.appendChild(cont);
+
+  document.getElementById('btn-generar-abdomen').onclick = generarRutinaAbdomen;
+
+  const tabsDiv = document.getElementById('tabs-dias-ab');
+  ab.dias.forEach((d, idx) => {
+    const c = ab.conteoDias[d.dia] || { total: 0 };
+    const tab = h(`<button class="tab-dia ${idx === ab.diaActivo ? 'activo' : ''}"><strong>Día ${d.dia}</strong><span>${c.total}x hecho</span></button>`);
+    tab.onclick = () => { ab.diaActivo = idx; renderAbdomen(); };
+    tabsDiv.appendChild(tab);
+  });
+
+  const listaDiv = document.getElementById('lista-ejercicios-ab');
+  dia.ejercicios.forEach((ej) => {
+    const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+    const altTxt = ej.alternativas?.length ? ` · ${ej.alternativas.length} alternativa(s)` : '';
+    const tarjeta = h(`
+      <div class="tarjeta-ejercicio">
+        <div class="ph">🔥</div>
+        <div class="info">
+          <div class="nombre">${nombre}</div>
+          <div class="detalle">${ej.series} series x ${ej.reps_objetivo}${altTxt}</div>
+        </div>
+        <div class="chevron">›</div>
+      </div>`);
+    tarjeta.onclick = () => {
+      estado.ejercicioActivo = ej;
+      estado.pantallaOrigenRegistro = 'abdomen';
+      estado.pantalla = 'registro';
+      render();
+    };
+    listaDiv.appendChild(tarjeta);
+
+    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
+      .then(({ data }) => {
+        if (data && data[0]) {
+          const ph = tarjeta.querySelector('.ph');
+          const img = h(`<img src="${data[0].url}" />`);
+          ph.replaceWith(img);
+        }
+      });
+  });
+}
+
+async function generarRutinaAbdomen() {
+  const boton = document.getElementById('btn-generar-abdomen');
+  const mensajeDiv = document.getElementById('abdomen-gen-mensaje');
+  const confirmado = confirm('¿Generar tu rutina de abdomen con IA? Usa tu perfil actual (lesiones, condiciones médicas, equipo) y consume una llamada a Claude.');
+  if (!confirmado) return;
+
+  boton.disabled = true;
+  boton.innerHTML = '<div class="spinner"></div>';
+  if (mensajeDiv) mensajeDiv.innerHTML = '';
+
+  const { data, error } = await supabase.functions.invoke('generate-routine', { body: { tipo: 'abdominales' } });
+
+  if (error) {
+    let detalle = error.message;
+    try {
+      const cuerpo = await error.context.json();
+      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
+    } catch (e) {}
+    if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
+    boton.disabled = false;
+    boton.textContent = '🔥 Generar rutina de abdomen con IA';
+    return;
+  }
+
+  await cargarRutinaAbdomen();
 }
 
 // =========================================================================
@@ -623,7 +865,7 @@ async function renderRegistro() {
       <button class="boton-primario" id="reg-volver">Volver a mi rutina</button>
     </div>`));
 
-  document.getElementById('reg-volver').onclick = () => { estado.pantalla = 'rutina'; render(); };
+  document.getElementById('reg-volver').onclick = () => { estado.pantalla = estado.pantallaOrigenRegistro || 'rutina'; render(); };
 
   // ---- Imágenes principales (grandes) ----
   supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
@@ -784,7 +1026,7 @@ async function renderRegistro() {
 
   let { data: sesionExistente } = await supabase
     .from('sesiones_entrenamiento').select('id')
-    .eq('usuario_id', userId).eq('rutina_id', estado.rutinaId).eq('fecha', hoy).eq('dia', ej.dia)
+    .eq('usuario_id', userId).eq('rutina_id', ej.rutina_id).eq('fecha', hoy).eq('dia', ej.dia)
     .maybeSingle();
 
   let sesionId;
@@ -793,7 +1035,7 @@ async function renderRegistro() {
   } else {
     const { data: nueva, error } = await supabase
       .from('sesiones_entrenamiento')
-      .insert({ usuario_id: userId, rutina_id: estado.rutinaId, fecha: hoy, dia: ej.dia })
+      .insert({ usuario_id: userId, rutina_id: ej.rutina_id, fecha: hoy, dia: ej.dia })
       .select('id').single();
     if (error) {
       document.getElementById('reg-tabla').innerHTML = `<div class="mensaje error">No se pudo crear la sesión: ${error.message}</div>`;
@@ -1030,8 +1272,9 @@ async function usarAlternativa(alt) {
     return;
   }
 
-  await cargarRutina();
-  estado.pantalla = 'rutina';
+  if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
+  else await cargarRutina();
+  estado.pantalla = estado.pantallaOrigenRegistro || 'rutina';
   render();
 }
 
@@ -1052,7 +1295,8 @@ async function agregarAlternativaManual(resultado) {
   }
 
   ej.alternativas = nuevasAlternativas;
-  cargarRutina(); // refresca en segundo plano la lista de "Rutina"
+  if (estado.pantallaOrigenRegistro === 'abdomen') cargarRutinaAbdomen();
+  else cargarRutina();
   renderRegistro(); // repinta esta pantalla con la nueva alternativa ya incluida
 }
 
