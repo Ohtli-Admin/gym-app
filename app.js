@@ -61,6 +61,29 @@ function h(html) {
 // =========================================================================
 // Arranque + sesión
 // =========================================================================
+// Arma un resumen HONESTO de qué datos reales se van a usar al generar —
+// para no confirmar con texto inventado como "los 7 días" sin checar la
+// base de datos.
+async function resumenPerfilParaConfirmar() {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: perfil } = await supabase.from('perfiles')
+    .select('peso_kg, metas, lesiones, condiciones_medicas, dias_disponibles, dias_disponibles_cardio, evitar_maquinas')
+    .eq('id', user.id).maybeSingle();
+
+  if (!perfil) return 'ADVERTENCIA: no encuentro tu perfil guardado — ve a Perfil y dale "Guardar perfil" primero.';
+
+  const partes = [
+    `Peso: ${perfil.peso_kg ?? '(sin dato)'}kg`,
+    `Metas: ${(perfil.metas || []).join(', ') || '(ninguna)'}`,
+    `Días de gym: ${perfil.dias_disponibles ?? '(sin dato)'} por semana`,
+    `Días de cardio: ${perfil.dias_disponibles_cardio ?? '(sin dato)'} por semana`,
+    `Lesiones: ${(perfil.lesiones || []).join(', ') || 'ninguna'}`,
+  ];
+  if (perfil.condiciones_medicas) partes.push(`Condición médica: ${perfil.condiciones_medicas}`);
+  if (perfil.evitar_maquinas) partes.push('Prioriza equipo con más disponibilidad');
+  return partes.join('\n');
+}
+
 async function iniciar() {
   const { data } = await supabase.auth.getSession();
   estado.sesion = data.session;
@@ -199,7 +222,7 @@ function renderAuth() {
 // Perfil / Onboarding
 // =========================================================================
 const perfilForm = {
-  nombre: '', peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], condicionesMedicas: '', dias: 4, evitarMaquinas: false,
+  nombre: '', peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], condicionesMedicas: '', dias: 4, diasCardio: 3, evitarMaquinas: false,
 };
 let perfilPrecargado = false;
 
@@ -236,8 +259,10 @@ function renderOnboarding() {
           <span>Barra, mancuernas, polea y peso corporal en vez de máquinas — útil en horas pico.</span>
         </div>
       </div>
-      <label class="etiqueta">Días disponibles por semana: <span id="p-dias-num">${perfilForm.dias}</span></label>
+      <label class="etiqueta">Días de gym (fuerza/abdomen) por semana: <span id="p-dias-num">${perfilForm.dias}</span></label>
       <div class="chip-grid" id="p-dias"></div>
+      <label class="etiqueta">Días de cardio por semana: <span id="p-dias-cardio-num">${perfilForm.diasCardio}</span></label>
+      <div class="chip-grid" id="p-dias-cardio"></div>
       <div id="p-mensaje"></div>
       <button class="boton-primario" id="p-guardar">Guardar perfil</button>
       <p class="subtitulo" style="margin-top:8px">Para generar o regenerar tu rutina, ve a la pestaña Rutina, Abdomen o Cardio — ahí encontrarás el botón correspondiente.</p>
@@ -312,6 +337,12 @@ function renderOnboarding() {
     btn.onclick = () => { perfilForm.dias = Number(btn.dataset.dia); renderOnboarding(); };
   });
 
+  const diasCardioDiv = document.getElementById('p-dias-cardio');
+  diasCardioDiv.innerHTML = [1, 2, 3, 4, 5, 6, 7].map((d) => `<button class="chip ${perfilForm.diasCardio === d ? 'activo' : ''}" data-dia-cardio="${d}">${d}</button>`).join('');
+  diasCardioDiv.querySelectorAll('[data-dia-cardio]').forEach((btn) => {
+    btn.onclick = () => { perfilForm.diasCardio = Number(btn.dataset.diaCardio); renderOnboarding(); };
+  });
+
   pintarMetas();
   pintarPrioridad();
 
@@ -350,6 +381,7 @@ async function guardarPerfil() {
       lesiones: perfilForm.lesiones,
       condiciones_medicas: condicionesMedicas || null,
       dias_disponibles: perfilForm.dias,
+      dias_disponibles_cardio: perfilForm.diasCardio,
       equipo_disponible: equipoDisponible,
       evitar_maquinas: perfilForm.evitarMaquinas,
     });
@@ -398,8 +430,9 @@ async function invocarGeneracionFuerza(boton, mensajeDiv) {
 // =========================================================================
 async function regenerarDia(diaNumero, tipo) {
   const esAbdomen = tipo === 'abdominales';
+  const resumen = await resumenPerfilParaConfirmar();
   const confirmado = confirm(
-    `¿Regenerar el Día ${diaNumero} de ${esAbdomen ? 'abdomen' : 'fuerza'} con IA? Esto reemplaza los ejercicios de ese día (los demás días no se tocan) y consume una llamada a Claude.`,
+    `Se regenerará el Día ${diaNumero} de ${esAbdomen ? 'abdomen' : 'fuerza'} con estos datos:\n\n${resumen}\n\nLos demás días no se tocan. ¿Continuar? Consume una llamada a Claude.`,
   );
   if (!confirmado) return;
 
@@ -434,8 +467,9 @@ async function regenerarDia(diaNumero, tipo) {
 }
 
 async function regenerarDiaCardio(diaNumero) {
+  const resumen = await resumenPerfilParaConfirmar();
   const confirmado = confirm(
-    `¿Regenerar el Día ${diaNumero} de cardio con IA? Esto reemplaza las fases de ese día y consume una llamada a Claude.`,
+    `Se regenerará el Día ${diaNumero} de cardio con estos datos:\n\n${resumen}\n\nLos demás días no se tocan. ¿Continuar? Consume una llamada a Claude.`,
   );
   if (!confirmado) return;
 
@@ -472,7 +506,7 @@ async function cargarRutina() {
   const userId = estado.sesion.user.id;
 
   const { data: perfilExistente } = await supabase
-    .from('perfiles').select('nombre, peso_kg, edad, metas, lesiones, condiciones_medicas, dias_disponibles, evitar_maquinas')
+    .from('perfiles').select('nombre, peso_kg, edad, metas, lesiones, condiciones_medicas, dias_disponibles, dias_disponibles_cardio, evitar_maquinas')
     .eq('id', userId).maybeSingle();
   if (perfilExistente) {
     perfilForm.nombre = perfilExistente.nombre || '';
@@ -482,6 +516,7 @@ async function cargarRutina() {
     perfilForm.lesiones = perfilExistente.lesiones || perfilForm.lesiones;
     perfilForm.condicionesMedicas = perfilExistente.condiciones_medicas || '';
     perfilForm.dias = perfilExistente.dias_disponibles || perfilForm.dias;
+    perfilForm.diasCardio = perfilExistente.dias_disponibles_cardio || perfilForm.diasCardio;
     perfilForm.evitarMaquinas = perfilExistente.evitar_maquinas || false;
 
     // Solo la PRIMERA vez que se precargan datos (al abrir la app), refresca
@@ -889,7 +924,8 @@ async function marcarCardioCompletado(diaNumero) {
 async function generarRutinaCardio() {
   const boton = document.getElementById('btn-generar-cardio');
   const mensajeDiv = document.getElementById('cardio-gen-mensaje');
-  const confirmado = confirm('¿Generar tu plan de cardio con IA? Usa tu perfil actual (lesiones, condiciones médicas, metas) y consume una llamada a Claude.');
+  const resumen = await resumenPerfilParaConfirmar();
+  const confirmado = confirm(`Se generará el plan de cardio con estos datos:\n\n${resumen}\n\n¿Continuar? Consume una llamada a Claude.`);
   if (!confirmado) return;
 
   boton.disabled = true;
@@ -938,7 +974,11 @@ function renderRutina() {
         <div id="fuerza-gen-mensaje"></div>
       </div>`));
     document.getElementById('btn-generar-fuerza').dataset.textoOriginal = '💪 Generar mi rutina con IA';
-    document.getElementById('btn-generar-fuerza').onclick = (e) => invocarGeneracionFuerza(e.target, document.getElementById('fuerza-gen-mensaje'));
+    document.getElementById('btn-generar-fuerza').onclick = async (e) => {
+      const resumen = await resumenPerfilParaConfirmar();
+      if (!confirm(`Se generará tu rutina de fuerza con estos datos:\n\n${resumen}\n\n¿Continuar? Consume una llamada a Claude.`)) return;
+      invocarGeneracionFuerza(e.target, document.getElementById('fuerza-gen-mensaje'));
+    };
     return;
   }
 
@@ -972,8 +1012,9 @@ function renderRutina() {
   app.appendChild(cont);
 
   document.getElementById('btn-generar-fuerza').dataset.textoOriginal = '💪 Regenerar toda mi rutina con IA';
-  document.getElementById('btn-generar-fuerza').onclick = (e) => {
-    if (!confirm('¿Regenerar TODA tu rutina de fuerza (los 7 días)? Esto reemplaza lo que ya tienes y consume una llamada a Claude.')) return;
+  document.getElementById('btn-generar-fuerza').onclick = async (e) => {
+    const resumen = await resumenPerfilParaConfirmar();
+    if (!confirm(`Se regenerará TODA tu rutina de fuerza con estos datos:\n\n${resumen}\n\nEsto reemplaza lo que ya tienes. ¿Continuar? Consume una llamada a Claude.`)) return;
     invocarGeneracionFuerza(e.target, document.getElementById('fuerza-gen-mensaje'));
   };
 
@@ -1127,7 +1168,8 @@ function renderAbdomen() {
 async function generarRutinaAbdomen() {
   const boton = document.getElementById('btn-generar-abdomen');
   const mensajeDiv = document.getElementById('abdomen-gen-mensaje');
-  const confirmado = confirm('¿Generar tu rutina de abdomen con IA? Usa tu perfil actual (lesiones, condiciones médicas, equipo) y consume una llamada a Claude.');
+  const resumen = await resumenPerfilParaConfirmar();
+  const confirmado = confirm(`Se generará la rutina de abdomen con estos datos:\n\n${resumen}\n\n¿Continuar? Consume una llamada a Claude.`);
   if (!confirmado) return;
 
   boton.disabled = true;
@@ -1260,11 +1302,18 @@ async function renderRegistro() {
         html += `
           <div class="bloque-progreso estancado" style="margin-top:8px">
             ⚠️ Llevas ${estancSemanas.semanas} semanas seguidas sin mejorar en este ejercicio (${estancSemanas.valor}${unidad}).
-            <div style="margin-top:6px;font-weight:400">Opciones a considerar: ${hayPeso ? 'ajusta el peso aunque bajes 1-2 reps' : 'suma 1-2 repeticiones aunque sea con más esfuerzo'}, cambia el rango de repeticiones, prueba una de las alternativas de abajo, o dale unos días de descanso extra a este grupo muscular (deload).</div>
+            <div style="margin-top:6px;font-weight:400">Opciones a considerar: ${hayPeso ? 'ajusta el peso aunque bajes 1-2 reps' : 'suma 1-2 repeticiones aunque sea con más esfuerzo'}, cambia el rango de repeticiones, o dale unos días de descanso extra a este grupo muscular (deload).</div>
+            <button class="btn-usar-alt" id="btn-ver-alternativas" style="margin-top:10px">Ver alternativas de este ejercicio ↓</button>
           </div>`;
       }
 
       cont.innerHTML = html;
+      const btnVerAlt = document.getElementById('btn-ver-alternativas');
+      if (btnVerAlt) {
+        btnVerAlt.onclick = () => {
+          document.getElementById('reg-alternativas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+      }
     });
 
   // ---- Alternativas (con imagen + botón de cambio) + buscador manual ----
@@ -1363,7 +1412,7 @@ async function renderRegistro() {
 
   // Traer lo que YA se guardó hoy para este ejercicio, para no perderlo al salir y volver.
   const { data: seriesGuardadas } = await supabase
-    .from('series_registradas').select('numero_serie, peso_kg, repeticiones, rir')
+    .from('series_registradas').select('id, numero_serie, peso_kg, repeticiones, rir')
     .eq('sesion_id', sesionId).eq('ejercicio_id', ej.ejercicio_id).order('numero_serie');
 
   const guardadasPorNumero = {};
@@ -1425,7 +1474,7 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
   const filasDiv = document.getElementById('filas-series');
 
   for (let i = 1; i <= numSeries; i++) {
-    const guardada = guardadasPorNumero[i];
+    let guardada = guardadasPorNumero[i]; // se reemplaza al editar, por eso 'let'
     const valorPeso = guardada?.peso_kg ?? (pesoSugerido != null ? pesoSugerido : '');
     const fila = h(`
       <div class="fila-serie">
@@ -1433,45 +1482,71 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
         <input type="number" id="peso-${i}" value="${valorPeso}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="reps-${i}" value="${guardada?.repeticiones ?? ''}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="rir-${i}" value="${guardada?.rir ?? ''}" ${guardada ? 'disabled' : ''} />
-        <button class="btn-guardar-serie ${guardada ? 'hecha' : ''}" id="btn-${i}">${guardada ? 'Guardado ✓' : 'Guardar'}</button>
+        <button class="btn-guardar-serie ${guardada ? 'hecha' : ''}" id="btn-${i}">${guardada ? 'Editar' : 'Guardar'}</button>
       </div>`);
     filasDiv.appendChild(fila);
 
-    if (!guardada) {
-      document.getElementById(`btn-${i}`).onclick = async () => {
-        const btn = document.getElementById(`btn-${i}`);
-        btn.disabled = true;
-        btn.innerHTML = '<div class="spinner"></div>';
+    const pesoInput = () => document.getElementById(`peso-${i}`);
+    const repsInput = () => document.getElementById(`reps-${i}`);
+    const rirInput = () => document.getElementById(`rir-${i}`);
+    const btn = () => document.getElementById(`btn-${i}`);
 
-        const peso = document.getElementById(`peso-${i}`).value;
-        const reps = document.getElementById(`reps-${i}`).value;
-        const rir = document.getElementById(`rir-${i}`).value;
+    const habilitarEdicion = () => {
+      pesoInput().disabled = false;
+      repsInput().disabled = false;
+      rirInput().disabled = false;
+      pesoInput().focus();
+      btn().textContent = 'Actualizar';
+      btn().classList.remove('hecha');
+    };
 
-        const { error } = await supabase.from('series_registradas').insert({
-          sesion_id: sesionId,
-          ejercicio_id: ejercicioId,
-          numero_serie: i,
-          peso_kg: peso ? parseFloat(peso) : null,
-          repeticiones: reps ? parseInt(reps, 10) : null,
-          rir: rir ? parseInt(rir, 10) : null,
-        });
+    const guardarOActualizar = async () => {
+      btn().disabled = true;
+      btn().innerHTML = '<div class="spinner"></div>';
 
-        if (error) {
-          document.getElementById('reg-mensaje').innerHTML = `<div class="mensaje error">No se pudo guardar la serie: ${error.message}</div>`;
-          btn.disabled = false;
-          btn.textContent = 'Guardar';
-          return;
-        }
-
-        btn.classList.add('hecha');
-        btn.textContent = 'Guardado ✓';
-        document.getElementById(`peso-${i}`).disabled = true;
-        document.getElementById(`reps-${i}`).disabled = true;
-        document.getElementById(`rir-${i}`).disabled = true;
-
-        if (i < numSeries) iniciarDescanso(90);
+      const peso = pesoInput().value;
+      const reps = repsInput().value;
+      const rir = rirInput().value;
+      const valores = {
+        peso_kg: peso ? parseFloat(peso) : null,
+        repeticiones: reps ? parseInt(reps, 10) : null,
+        rir: rir ? parseInt(rir, 10) : null,
       };
-    }
+
+      const { data: fila, error } = guardada
+        ? await supabase.from('series_registradas').update(valores).eq('id', guardada.id).select().single()
+        : await supabase.from('series_registradas').insert({
+            sesion_id: sesionId, ejercicio_id: ejercicioId, numero_serie: i, ...valores,
+          }).select().single();
+
+      if (error) {
+        document.getElementById('reg-mensaje').innerHTML = `<div class="mensaje error">No se pudo guardar la serie: ${error.message}</div>`;
+        btn().disabled = false;
+        btn().textContent = guardada ? 'Actualizar' : 'Guardar';
+        return;
+      }
+
+      const eraNueva = !guardada;
+      guardada = fila; // ahora sí existe (o se actualizó) — el próximo clic vuelve a ser "editar"
+      btn().disabled = false;
+      btn().classList.add('hecha');
+      btn().textContent = 'Editar';
+      pesoInput().disabled = true;
+      repsInput().disabled = true;
+      rirInput().disabled = true;
+
+      if (eraNueva && i < numSeries) iniciarDescanso(90);
+    };
+
+    btn().onclick = () => {
+      if (pesoInput().disabled) {
+        // los campos están bloqueados (serie ya guardada) → este clic es "Editar"
+        habilitarEdicion();
+      } else {
+        // campos habilitados (nueva serie, o ya en modo edición) → guardar/actualizar
+        guardarOActualizar();
+      }
+    };
   }
 }
 
