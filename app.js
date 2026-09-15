@@ -24,6 +24,16 @@ const estado = {
     diasDisponibles: 0,
     tasaConsistenciaReciente: null,
   },
+  cardio: {
+    dias: null,
+    rutinaId: null,
+    conteoDias: {},
+    cargando: false,
+    error: null,
+    diaActivo: 0,
+    semanaActual: [],
+    diasDisponibles: 0,
+  },
 };
 
 const LESIONES_COMUNES = ['Rodilla', 'Hombro', 'Espalda baja', 'Muñeca', 'Tobillo', 'Cadera'];
@@ -58,11 +68,19 @@ async function iniciar() {
 
   supabase.auth.onAuthStateChange((_evt, nuevaSesion) => {
     estado.sesion = nuevaSesion;
-    if (nuevaSesion) cargarRutina();
+    if (nuevaSesion) {
+      cargarRutina();
+      cargarRutinaAbdomen();
+      cargarRutinaCardio();
+    }
     render();
   });
 
-  if (estado.sesion) cargarRutina();
+  if (estado.sesion) {
+    cargarRutina();
+    cargarRutinaAbdomen();
+    cargarRutinaCardio();
+  }
 }
 
 function render() {
@@ -80,6 +98,7 @@ function render() {
   if (estado.pantalla === 'onboarding') renderOnboarding();
   else if (estado.pantalla === 'rutina') renderRutina();
   else if (estado.pantalla === 'abdomen') renderAbdomen();
+  else if (estado.pantalla === 'cardio') renderCardio();
   else if (estado.pantalla === 'registro') renderRegistro();
   else if (estado.pantalla === 'historial') renderHistorial();
   else if (estado.pantalla === 'extra') renderExtra();
@@ -93,8 +112,9 @@ function renderNav() {
       <button class="nav-item ${estado.pantalla === 'onboarding' ? 'activo' : ''}" data-nav="onboarding"><span class="icono">👤</span>Perfil</button>
       <button class="nav-item ${estado.pantalla === 'rutina' ? 'activo' : ''}" data-nav="rutina"><span class="icono">📋</span>Rutina</button>
       <button class="nav-item ${estado.pantalla === 'abdomen' ? 'activo' : ''}" data-nav="abdomen"><span class="icono">🔥</span>Abdomen</button>
+      <button class="nav-item ${estado.pantalla === 'cardio' ? 'activo' : ''}" data-nav="cardio"><span class="icono">🏃</span>Cardio</button>
       <button class="nav-item ${estado.pantalla === 'registro' ? 'activo' : ''}" data-nav="registro"><span class="icono">✏️</span>Registro</button>
-      <button class="nav-item ${estado.pantalla === 'extra' ? 'activo' : ''}" data-nav="extra"><span class="icono">🏃</span>Extra</button>
+      <button class="nav-item ${estado.pantalla === 'extra' ? 'activo' : ''}" data-nav="extra"><span class="icono">🧗</span>Extra</button>
       <button class="nav-item ${estado.pantalla === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
       <button class="nav-item" data-nav="salir"><span class="icono">🚪</span>Salir</button>
     </div>`;
@@ -610,6 +630,232 @@ async function cargarRutinaAbdomen() {
 
   ab.cargando = false;
   if (estado.pantalla === 'abdomen') render();
+}
+
+// =========================================================================
+// Cardio: plan generado por IA (fases, no series/reps) + marcar completado
+// =========================================================================
+async function cargarRutinaCardio() {
+  const c = estado.cardio;
+  c.cargando = true;
+  c.error = null;
+  if (estado.pantalla === 'cardio') render();
+
+  const userId = estado.sesion.user.id;
+
+  const { data: rutina, error: rutinaError } = await supabase
+    .from('rutinas').select('id')
+    .eq('usuario_id', userId).eq('activa', true).eq('tipo', 'cardio')
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+  if (rutinaError) {
+    c.error = `No se pudo cargar tu plan de cardio: ${rutinaError.message}`;
+    c.cargando = false;
+    if (estado.pantalla === 'cardio') render();
+    return;
+  }
+  if (!rutina) {
+    c.rutinaId = null;
+    c.dias = [];
+    c.cargando = false;
+    if (estado.pantalla === 'cardio') render();
+    return;
+  }
+  c.rutinaId = rutina.id;
+
+  const { data: fases, error: fasesError } = await supabase
+    .from('cardio_plan').select('*').eq('rutina_id', rutina.id).order('dia').order('orden');
+
+  if (fasesError) {
+    c.error = `No se pudieron cargar las fases: ${fasesError.message}`;
+    c.cargando = false;
+    if (estado.pantalla === 'cardio') render();
+    return;
+  }
+
+  const porDia = {};
+  for (const f of fases) {
+    if (!porDia[f.dia]) porDia[f.dia] = { dia: f.dia, nombre_dia: f.nombre_dia, fases: [] };
+    porDia[f.dia].fases.push(f);
+  }
+  c.dias = Object.values(porDia).sort((a, b) => a.dia - b.dia);
+  if (c.diaActivo >= c.dias.length) c.diaActivo = 0;
+
+  const { data: sesiones } = await supabase
+    .from('sesiones_entrenamiento').select('dia, fecha')
+    .eq('rutina_id', rutina.id).eq('usuario_id', userId);
+
+  c.diasDisponibles = c.dias.length;
+  const conteo = {};
+  for (const d of c.dias) conteo[d.dia] = { total: 0 };
+  const mapaFechaDia = {};
+  for (const s of sesiones || []) {
+    if (s.dia == null) continue;
+    conteo[s.dia] = conteo[s.dia] || { total: 0 };
+    conteo[s.dia].total++;
+    mapaFechaDia[s.fecha] = s.dia;
+  }
+  c.conteoDias = conteo;
+
+  const hoyStr = formatoFecha(new Date());
+  const inicioActual = formatoFecha(inicioDeSemana(hoyStr));
+  const etiquetasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const celdas = [];
+  for (let i = 0; i < 7; i++) {
+    const f = new Date(inicioActual + 'T00:00:00');
+    f.setDate(f.getDate() + i);
+    const fStr = formatoFecha(f);
+    celdas.push({ etiqueta: etiquetasSemana[i], fecha: fStr, dia: mapaFechaDia[fStr] ?? null, esFuturo: fStr > hoyStr });
+  }
+  c.semanaActual = celdas;
+
+  c.cargando = false;
+  if (estado.pantalla === 'cardio') render();
+}
+
+function renderCardio() {
+  app.innerHTML = '';
+  const c = estado.cardio;
+
+  const botonGenerar = `
+    <button class="boton-secundario" id="btn-generar-cardio" style="text-align:left;padding-left:0">
+      🏃 ${c.dias && c.dias.length > 0 ? 'Regenerar' : 'Generar'} plan de cardio con IA
+    </button>
+    <div id="cardio-gen-mensaje"></div>`;
+
+  if (c.cargando) {
+    app.appendChild(h('<div class="pantalla-carga"><div class="spinner"></div></div>'));
+    return;
+  }
+  if (c.error) app.appendChild(h(`<div class="mensaje error">${c.error}</div>`));
+
+  if (!c.dias || c.dias.length === 0) {
+    app.appendChild(h(`
+      <div>
+        <div class="vacio"><div class="icono-grande">🏃</div><p>Aún no tienes plan de cardio.</p></div>
+        ${botonGenerar}
+      </div>`));
+    document.getElementById('btn-generar-cardio').onclick = generarRutinaCardio;
+    return;
+  }
+
+  const diasCompletadosEstaSemana = c.semanaActual.filter((x) => x.dia != null).length;
+  const dia = c.dias[c.diaActivo];
+  const info = c.conteoDias[dia.dia] || { total: 0 };
+  const yaCompletadoHoy = c.semanaActual.some((x) => x.fecha === formatoFecha(new Date()) && x.dia === dia.dia);
+
+  const etiquetasFase = { calentamiento: 'Calentamiento', principal: 'Cardio principal', enfriamiento: 'Enfriamiento' };
+
+  const cont = h('<div></div>');
+  cont.appendChild(h(`
+    <div>
+      <h1 class="titulo">Plan de cardio</h1>
+      <p class="subtitulo">${dia.nombre_dia}</p>
+      <div class="semana-calendario">
+        ${c.semanaActual.map((x) => `
+          <div class="celda-dia ${x.dia != null ? 'hecho' : ''} ${x.esFuturo ? 'futuro' : ''}">
+            <span class="etiqueta-dia">${x.etiqueta}</span>
+            <span class="valor-dia">${x.dia != null ? 'D' + x.dia : (x.esFuturo ? '' : '—')}</span>
+          </div>`).join('')}
+      </div>
+      <p class="subtitulo" style="margin-top:-6px">Esta semana: ${diasCompletadosEstaSemana}/${c.diasDisponibles} días planeados</p>
+      <div class="resumen-semana">
+        <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
+      </div>
+      <div class="tabs-dias" id="tabs-dias-cardio"></div>
+      ${botonGenerar}
+      <div id="fases-cardio"></div>
+      <div id="cardio-mensaje"></div>
+      <button class="boton-primario" id="btn-marcar-cardio" ${yaCompletadoHoy ? 'disabled' : ''}>
+        ${yaCompletadoHoy ? 'Ya completaste esto hoy ✓' : 'Marcar como completado hoy'}
+      </button>
+    </div>`));
+  app.appendChild(cont);
+
+  document.getElementById('btn-generar-cardio').onclick = generarRutinaCardio;
+
+  const tabsDiv = document.getElementById('tabs-dias-cardio');
+  c.dias.forEach((d, idx) => {
+    const info2 = c.conteoDias[d.dia] || { total: 0 };
+    const tab = h(`<button class="tab-dia ${idx === c.diaActivo ? 'activo' : ''}"><strong>Día ${d.dia}</strong><span>${info2.total}x hecho</span></button>`);
+    tab.onclick = () => { c.diaActivo = idx; renderCardio(); };
+    tabsDiv.appendChild(tab);
+  });
+
+  const fasesDiv = document.getElementById('fases-cardio');
+  dia.fases.forEach((f) => {
+    fasesDiv.appendChild(h(`
+      <div class="tarjeta-ejercicio">
+        <div class="ph">${f.fase === 'principal' ? '🔥' : '🚶'}</div>
+        <div class="info">
+          <div class="nombre">${etiquetasFase[f.fase]}: ${f.actividad}</div>
+          <div class="detalle">${f.duracion_min} min${f.intensidad ? ' · ' + f.intensidad : ''}</div>
+        </div>
+      </div>`));
+  });
+
+  document.getElementById('btn-marcar-cardio').onclick = () => marcarCardioCompletado(dia.dia);
+}
+
+async function marcarCardioCompletado(diaNumero) {
+  const c = estado.cardio;
+  const btn = document.getElementById('btn-marcar-cardio');
+  const mensajeDiv = document.getElementById('cardio-mensaje');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>';
+
+  const userId = estado.sesion.user.id;
+  const hoy = formatoFecha(new Date());
+
+  const { error } = await supabase.from('sesiones_entrenamiento')
+    .insert({ usuario_id: userId, rutina_id: c.rutinaId, fecha: hoy, dia: diaNumero });
+
+  if (error) {
+    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo registrar: ${error.message}</div>`;
+    btn.disabled = false;
+    btn.textContent = 'Marcar como completado hoy';
+    return;
+  }
+
+  // También lo dejamos en el historial de "Extra" (tipo cardio), para que
+  // aparezca junto a lo demás que ya registras ahí.
+  const dia = c.dias.find((d) => d.dia === diaNumero);
+  for (const f of dia.fases) {
+    await supabase.from('actividades_extra').insert({
+      usuario_id: userId, tipo: 'cardio',
+      nombre_actividad: `${f.fase}: ${f.actividad}`,
+      duracion_min: f.duracion_min, notas: f.intensidad || null,
+    });
+  }
+
+  await cargarRutinaCardio();
+}
+
+async function generarRutinaCardio() {
+  const boton = document.getElementById('btn-generar-cardio');
+  const mensajeDiv = document.getElementById('cardio-gen-mensaje');
+  const confirmado = confirm('¿Generar tu plan de cardio con IA? Usa tu perfil actual (lesiones, condiciones médicas, metas) y consume una llamada a Claude.');
+  if (!confirmado) return;
+
+  boton.disabled = true;
+  boton.innerHTML = '<div class="spinner"></div>';
+  if (mensajeDiv) mensajeDiv.innerHTML = '';
+
+  const { data, error } = await supabase.functions.invoke('generate-cardio-plan');
+
+  if (error) {
+    let detalle = error.message;
+    try {
+      const cuerpo = await error.context.json();
+      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
+    } catch (e) {}
+    if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
+    boton.disabled = false;
+    boton.textContent = '🏃 Generar plan de cardio con IA';
+    return;
+  }
+
+  await cargarRutinaCardio();
 }
 
 // =========================================================================
