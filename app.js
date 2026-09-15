@@ -239,7 +239,8 @@ function renderOnboarding() {
       <label class="etiqueta">Días disponibles por semana: <span id="p-dias-num">${perfilForm.dias}</span></label>
       <div class="chip-grid" id="p-dias"></div>
       <div id="p-mensaje"></div>
-      <button class="boton-primario" id="p-generar">Generar mi rutina</button>
+      <button class="boton-primario" id="p-guardar">Guardar perfil</button>
+      <p class="subtitulo" style="margin-top:8px">Para generar o regenerar tu rutina, ve a la pestaña Rutina, Abdomen o Cardio — ahí encontrarás el botón correspondiente.</p>
 
       <h2 class="titulo" style="font-size:16px;margin-top:30px;margin-bottom:2px">Tu peso corporal</h2>
       <p class="subtitulo">Independiente del peso que usa la rutina — esto es tu historial en el tiempo</p>
@@ -314,13 +315,13 @@ function renderOnboarding() {
   pintarMetas();
   pintarPrioridad();
 
-  document.getElementById('p-generar').onclick = generarRutina;
+  document.getElementById('p-guardar').onclick = guardarPerfil;
   renderPesoCorporal();
 }
 
-async function generarRutina() {
+async function guardarPerfil() {
   const mensajeDiv = document.getElementById('p-mensaje');
-  const boton = document.getElementById('p-generar');
+  const boton = document.getElementById('p-guardar');
   const nombre = document.getElementById('p-nombre').value.trim();
   const condicionesMedicas = document.getElementById('p-condiciones').value.trim();
   const peso = document.getElementById('p-peso').value;
@@ -358,24 +359,38 @@ async function generarRutina() {
     const tituloEl = document.querySelector('#app h1.titulo');
     if (tituloEl && nombre) tituloEl.textContent = `Hola, ${nombre} 👋`;
 
-    const { data, error: funcionError } = await supabase.functions.invoke('generate-routine');
-    if (funcionError) {
-      let detalle = funcionError.message;
-      try {
-        const cuerpo = await funcionError.context.json();
-        detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
-      } catch (e) {}
-      throw new Error(`No se pudo generar la rutina: ${detalle}`);
-    }
-
-    mensajeDiv.innerHTML = `<div class="mensaje info">¡Listo! Rutina de ${data.dias.length} días generada y guardada. ${data.rutina.resumen}</div>`;
-    await cargarRutina();
+    mensajeDiv.innerHTML = '<div class="mensaje info">Perfil guardado. Ve a Rutina, Abdomen o Cardio para generar con estos datos.</div>';
   } catch (err) {
     mensajeDiv.innerHTML = `<div class="mensaje error">${err.message}</div>`;
   } finally {
     boton.disabled = false;
-    boton.textContent = 'Generar mi rutina';
+    boton.textContent = 'Guardar perfil';
   }
+}
+
+// Reutilizable desde la pestaña Rutina — asume que el perfil ya se guardó
+// antes desde Perfil (no vuelve a pedir peso/edad/metas aquí).
+async function invocarGeneracionFuerza(boton, mensajeDiv) {
+  boton.disabled = true;
+  boton.innerHTML = '<div class="spinner"></div>';
+  if (mensajeDiv) mensajeDiv.innerHTML = '';
+
+  const { data, error } = await supabase.functions.invoke('generate-routine');
+
+  if (error) {
+    let detalle = error.message;
+    try {
+      const cuerpo = await error.context.json();
+      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
+    } catch (e) {}
+    if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
+    boton.disabled = false;
+    boton.textContent = boton.dataset.textoOriginal || 'Generar mi rutina';
+    return;
+  }
+
+  if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje info">¡Listo! Rutina de ${data.dias.length} días generada. ${data.rutina.resumen}</div>`;
+  await cargarRutina();
 }
 
 // =========================================================================
@@ -874,11 +889,16 @@ function renderRutina() {
   }
   if (!estado.dias || estado.dias.length === 0) {
     app.appendChild(h(`
-      <div class="vacio">
-        <div class="icono-grande">📋</div>
-        <p>Aún no tienes rutina.</p>
-        <p>Ve a la pestaña Perfil y dale "Generar mi rutina".</p>
+      <div>
+        <div class="vacio">
+          <div class="icono-grande">📋</div>
+          <p>Aún no tienes rutina de fuerza.</p>
+        </div>
+        <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">💪 Generar mi rutina con IA</button>
+        <div id="fuerza-gen-mensaje"></div>
       </div>`));
+    document.getElementById('btn-generar-fuerza').dataset.textoOriginal = '💪 Generar mi rutina con IA';
+    document.getElementById('btn-generar-fuerza').onclick = (e) => invocarGeneracionFuerza(e.target, document.getElementById('fuerza-gen-mensaje'));
     return;
   }
 
@@ -903,11 +923,19 @@ function renderRutina() {
         <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
       </div>
       <div class="tabs-dias" id="tabs-dias"></div>
+      <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">💪 Regenerar toda mi rutina con IA</button>
+      <div id="fuerza-gen-mensaje"></div>
       <button class="boton-secundario" id="btn-regenerar-dia" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
       <div id="regen-mensaje"></div>
       <div id="lista-ejercicios"></div>
     </div>`));
   app.appendChild(cont);
+
+  document.getElementById('btn-generar-fuerza').dataset.textoOriginal = '💪 Regenerar toda mi rutina con IA';
+  document.getElementById('btn-generar-fuerza').onclick = (e) => {
+    if (!confirm('¿Regenerar TODA tu rutina de fuerza (los 7 días)? Esto reemplaza lo que ya tienes y consume una llamada a Claude.')) return;
+    invocarGeneracionFuerza(e.target, document.getElementById('fuerza-gen-mensaje'));
+  };
 
   document.getElementById('btn-regenerar-dia').onclick = () => regenerarDia(dia.dia);
 
@@ -1554,7 +1582,7 @@ async function renderHistorial() {
 
   const userId = estado.sesion.user.id;
   const { data: sesiones, error } = await supabase
-    .from('sesiones_entrenamiento').select('id, fecha, dia')
+    .from('sesiones_entrenamiento').select('id, fecha, dia, rutinas(tipo, nombre)')
     .eq('usuario_id', userId).order('fecha', { ascending: false }).limit(30);
 
   if (error) { app.innerHTML = `<div class="mensaje error">${error.message}</div>`; return; }
@@ -1563,10 +1591,28 @@ async function renderHistorial() {
     return;
   }
 
-  app.innerHTML = '<h1 class="titulo">Historial</h1><p class="subtitulo">Tus últimas sesiones</p><div id="hist-lista"></div>';
+  app.innerHTML = '<h1 class="titulo">Historial</h1><p class="subtitulo">Tus últimas sesiones (fuerza, abdomen y cardio)</p><div id="hist-lista"></div>';
   const lista = document.getElementById('hist-lista');
 
+  const iconoPorTipo = { fuerza: '💪', abdominales: '🔥', cardio: '🏃' };
+  const nombrePorTipo = { fuerza: 'Fuerza', abdominales: 'Abdomen', cardio: 'Cardio' };
+
   for (const s of sesiones) {
+    const tipo = s.rutinas?.tipo || 'fuerza';
+    const etiquetaTipo = `${iconoPorTipo[tipo] || ''} ${nombrePorTipo[tipo] || tipo}`;
+
+    if (tipo === 'cardio') {
+      // El detalle real de cardio vive en Extra → Cardio; aquí solo
+      // confirmamos que el día se completó, sin fingir que hay series.
+      const tarjeta = h(`
+        <div class="tarjeta-sesion">
+          <div class="fecha">${s.fecha} — ${etiquetaTipo}, Día ${s.dia ?? '?'}</div>
+          <div class="linea"><span>Ver detalle en Extra → Cardio</span></div>
+        </div>`);
+      lista.appendChild(tarjeta);
+      continue;
+    }
+
     const { data: series } = await supabase
       .from('series_registradas').select('ejercicio_id, peso_kg, repeticiones, ejercicios(nombre)')
       .eq('sesion_id', s.id);
@@ -1579,7 +1625,7 @@ async function renderHistorial() {
 
     const tarjeta = h(`
       <div class="tarjeta-sesion">
-        <div class="fecha">${s.fecha} — Día ${s.dia ?? '?'}</div>
+        <div class="fecha">${s.fecha} — ${etiquetaTipo}, Día ${s.dia ?? '?'}</div>
         ${Object.entries(porEjercicio).map(([nombre, num]) => `<div class="linea"><span>${nombre}</span><strong>${num} series</strong></div>`).join('') || '<div class="linea"><span>Sin series registradas</span></div>'}
       </div>`);
     lista.appendChild(tarjeta);
