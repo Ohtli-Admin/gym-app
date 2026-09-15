@@ -235,6 +235,30 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .spinner { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: girar 0.7s linear infinite; margin: 0 auto; }
 @keyframes girar { to { transform: rotate(360deg); } }
 
+.modal-fondo {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 1000;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal-caja {
+  background: var(--bg);
+  border-top-left-radius: 20px; border-top-right-radius: 20px;
+  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  width: 100%; max-width: 480px;
+  max-height: 85vh; overflow-y: auto;
+}
+.modal-botones { display: flex; gap: 10px; margin-top: 16px; }
+.modal-botones .boton-primario, .modal-botones .boton-secundario-caja { flex: 1; }
+.boton-secundario-caja {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 15px; font-size: 15px; font-weight: 700; color: var(--text); cursor: pointer;
+}
+textarea.input-modal {
+  width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px; color: var(--text); font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;
+}
+
 .banner-descanso {
   position: fixed;
   top: 12px; left: 50%;
