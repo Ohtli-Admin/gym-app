@@ -130,3 +130,50 @@ The current schema has no first-class entities for:
 - generated calisthenics or specialized performance programs.
 
 Those capabilities therefore require explicit model changes rather than only a visual redesign.
+
+
+## Exercise catalog and media reconciliation
+
+Direct analysis of the deployed GymApp catalog confirms:
+
+- 1,464 exercise rows.
+- 0 exercises have non-empty `contraindicaciones`; the field exists structurally but currently provides no effective safety metadata.
+- Muscle taxonomy is mixed. Examples include broad categories such as `legs`, `arms`, `shoulders`, `back`, and `abs` alongside anatomical/specific categories such as `quadriceps`, `hamstrings`, `triceps`, `middle back`, `lats`, and `lower back`.
+- Equipment taxonomy is also mixed-language/mixed-source: e.g. `peso_corporal` vs `none (bodyweight exercise)`, `mancuernas` vs `dumbbell`, `barra` vs `barbell`, and `polea` vs `cable machine`.
+- Difficulty distribution is 1,068 intermediate, 348 beginner and 48 advanced.
+- Only 65 distinct exercises have been used in saved routine assignments and 11 distinct exercises appear in recorded sets. Therefore historical user data depends on a relatively small subset of the 1,464 legacy IDs.
+
+Media state:
+
+- 1,793 image-reference rows.
+- 932 of 1,464 exercises have at least one image reference; 532 have none.
+- 715 exercises have a `posicion_inicial` image and 715 a `posicion_final` image.
+- 266 exercises have at least one `referencia_principal`; 65 have `referencia` records.
+- Current image hosts are overwhelmingly external: 1,430 rows point to `raw.githubusercontent.com` and 363 to `wger.de`.
+- The current GymApp database therefore does not own a controlled canonical media library; it stores external references.
+
+### Comparison with Gym-Exercise-Library
+
+The independent `Gym-Exercise-Library` repository now has a canonical SRC-002 catalog with 876 records and an explicit export path for consumers. Its build tooling produces `output/gym-exercise-library/catalog.json` directly from `catalog/canonical/SRC-002/exercises.json`, retaining canonical exercise IDs and provenance.
+
+The library model is materially richer than GymApp's legacy `ejercicios` table. Its consumer-facing catalog already exposes structured areas including names, body regions, primary/secondary muscles, equipment, training types, difficulty and biomechanics. The repository also has controlled taxonomies and provenance policy/history.
+
+Therefore the two catalogs are not equivalent datasets:
+
+- GymApp legacy catalog: 1,464 rows optimized around the current generator's minimal fields and mixed imported taxonomies.
+- Gym-Exercise-Library canonical catalog: 876 curated/canonical records with normalized structured metadata, provenance and a dedicated export contract.
+
+No direct replacement should be performed yet. Existing `rutina_ejercicios` and `series_registradas` reference legacy GymApp exercise IDs. Replacing those IDs without a mapping layer would risk breaking historical routines and training history.
+
+### Baseline migration principle
+
+Treat existing GymApp exercise IDs as legacy persistent references until a crosswalk is built.
+
+A safe future migration should distinguish:
+
+1. canonical exercise identity from Gym-Exercise-Library;
+2. legacy GymApp exercise IDs required by historical records;
+3. GymApp-specific user/training state;
+4. library-owned objective exercise metadata/media.
+
+The integration target should be a versioned library export/contract, not direct reads from the internal file layout of the library repository.
