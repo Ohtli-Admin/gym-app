@@ -86,3 +86,47 @@ Future architecture should define a stable versioned contract between the exerci
 3. Reconcile the current GymApp exercise catalog with the independent `Gym-Exercise-Library` contract.
 4. Freeze the pre-reengineering baseline.
 5. Only then begin product and UX reengineering.
+
+
+## Database structure captured
+
+A read-only structural snapshot of the deployed public schema was captured under `supabase/baseline/schema_snapshot.sql`. It is intentionally labeled as a baseline artifact, not an executable migration. Production was not changed.
+
+The deployed schema confirms several domain constraints that were only partially visible in the historical handoff:
+
+- `rutinas.tipo` is constrained to `fuerza`, `cardio`, or `abdominales`.
+- `actividades_extra.tipo` supports `cardio`, `abdominales`, `calistenia`, `escalada`, and `otro`.
+- `rutina_ejercicios.series` is constrained to 1–6.
+- `series_registradas.rir` is constrained to 0–5.
+- `perfiles.dias_disponibles` is constrained to 1–7 and `metas` to 1–3 entries.
+- Exercise images are constrained to the existing image/reference categories.
+
+Foreign keys confirm the current persistence chain:
+`auth.users -> perfiles/rutinas/sesiones/actividades/mediciones -> rutina_ejercicios/cardio_plan/series_registradas`, with exercise references pointing to `ejercicios`.
+
+## Frontend/backend reconciliation findings
+
+The current frontend and deployed functions agree on the main routine-generation contract: force/abdomen use `generate-routine`; individual force/abdomen days use `regenerate-day`; cardio has its own generate/regenerate functions.
+
+The current product has two overlapping representations of some training domains. Abdomen and cardio have dedicated generated-routine experiences, while `actividades_extra` also accepts manual abdomen/cardio entries. Calisthenics and climbing currently exist only as manually recorded extra activities, not generated routine domains.
+
+The profile UI hard-codes `nivel = 'intermedio'` when saving identity/profile basics. This is a real implementation constraint, not merely historical documentation.
+
+The generation modal asks the user to manually remove a recovered injury (for example, after recovery). There is no persisted restriction lifecycle, review date, recovery state, or rehabilitation plan model in the current database.
+
+Safety remains split between structured `lesiones[]`/exercise contraindications and free-text `condiciones_medicas`. The deployed generation prompt contains condition-specific reasoning examples, while deterministic validation only verifies catalog membership, equipment, series ranges and matches against the structured contraindication array. Therefore free-text medical restrictions are not fully enforced deterministically.
+
+The frontend directly writes user-owned records such as profile changes, routine exercise substitutions, activities, measurements and training logs through Supabase RLS. Edge Functions use the service role for generated routine persistence after authenticating the caller.
+
+## Reengineering implications (facts, not design decisions)
+
+The current schema has no first-class entities for:
+
+- time-bounded physical restrictions;
+- restriction review/recovery lifecycle;
+- rehabilitation prescriptions/exercises;
+- environment/context for today's workout;
+- equipment availability by environment/session;
+- generated calisthenics or specialized performance programs.
+
+Those capabilities therefore require explicit model changes rather than only a visual redesign.
