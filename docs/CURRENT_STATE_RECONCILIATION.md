@@ -1,6 +1,6 @@
 # GymApp Current-State Reconciliation
 
-Status: **baseline reconciliation in progress**.
+Status: **backend deployment captured; reconciliation in progress**.
 
 This document records evidence from the GitHub repository and deployed Supabase project before product reengineering. No functional application changes are part of this baseline.
 
@@ -26,7 +26,20 @@ The deployed project also contains four active Edge Functions:
 - `generate-cardio-plan` (version 3)
 - `regenerate-cardio-day` (version 3)
 
-The Edge Function source exists in Supabase deployment state but was not present under `supabase/functions/` in the GitHub `main` branch when reconciliation began.
+The Edge Function source was absent from `main` when reconciliation began. Exact copies of the four deployed functions have now been captured in this baseline branch under `supabase/functions/<slug>/index.ts`. Production Supabase was not modified.
+
+## Verified deployed data population
+
+Direct SQL counts during reconciliation confirmed:
+
+- `ejercicios`: 1,464 rows
+- `ejercicio_imagenes`: 1,793 rows
+- `rutinas`: 7 rows
+- `rutina_ejercicios`: 116 rows
+- `series_registradas`: 36 rows
+- `cardio_plan`: 24 rows
+
+An earlier compact table-inspection response reported zero rows for `ejercicios` and `ejercicio_imagenes`; direct SQL disproved that result. The direct counts are the baseline evidence.
 
 ## Verified frontend
 
@@ -68,9 +81,8 @@ Future architecture should define a stable versioned contract between the exerci
 
 ## Next baseline work
 
-1. Version the exact deployed Edge Function source in this branch.
-2. Capture the current database schema as reproducible migrations/schema documentation without changing production.
-3. Finish frontend/backend behavioral reconciliation.
-4. Resolve discrepancies in exercise catalog/media population.
-5. Freeze the pre-reengineering baseline.
-6. Only then begin product and UX reengineering.
+1. Capture the current database schema as reproducible migrations/schema documentation without changing production.
+2. Finish frontend/backend behavioral reconciliation.
+3. Reconcile the current GymApp exercise catalog with the independent `Gym-Exercise-Library` contract.
+4. Freeze the pre-reengineering baseline.
+5. Only then begin product and UX reengineering.
