@@ -3,7 +3,7 @@
 // =========================================================================
 const estado = {
   sesion: undefined, // undefined = cargando, null = sin sesión
-  pantalla: 'rutina',
+  pantalla: 'inicio', // GymApp 2.0 (GA-005): "Inicio" es el destino post-login por defecto
   authModo: 'login', // 'login' | 'registro' | 'reset'
   dias: null,
   rutinaId: null,
@@ -34,14 +34,45 @@ const estado = {
     semanaActual: [],
     diasDisponibles: 0,
   },
+  // Generación de rutinas (fuerza/abdomen/cardio) — GLOBAL, no local a la
+  // pantalla Generador. Antes vivía en variables de DOM capturadas dentro
+  // de invocarGeneracionFuerza/generarRutinaAbdomenDesdeGenerador/
+  // generarRutinaCardioDesdeGenerador; si el usuario navegaba a otra
+  // pantalla mientras la llamada seguía en curso, esas referencias
+  // quedaban apuntando a nodos ya destruidos por el siguiente render() y
+  // el resultado (o el error) se perdía visualmente aunque la petición
+  // siguiera viva. Ahora el estado de "generando"/"mensaje" vive aquí,
+  // así sobrevive a cualquier cambio de pantalla — ver
+  // actualizarIndicadorGeneracion() y renderGenerador().
+  generacion: {
+    fuerza: { activo: false, mensaje: null },
+    abdomen: { activo: false, mensaje: null },
+    cardio: { activo: false, mensaje: null },
+  },
 };
 
 const LESIONES_COMUNES = ['Rodilla', 'Hombro', 'Espalda baja', 'Muñeca', 'Tobillo', 'Cadera'];
 const METAS = ['Hipertrofia', 'Fuerza', 'Resistencia', 'Pérdida de grasa'];
 const MAX_METAS = 3;
+const ETIQUETAS_GENERACION = { fuerza: 'Fuerza', abdomen: 'Abdomen', cardio: 'Cardio' };
 
 const app = document.getElementById('app');
 const navContainer = document.getElementById('nav-container');
+const indicadorGeneracion = document.getElementById('indicador-generacion');
+
+// Banner global "Generando rutina de X…" — vive FUERA de #app a propósito
+// (ver index.html), para que sobreviva a que render() reemplace
+// app.innerHTML al cambiar de pantalla. Se actualiza cada vez que cambia
+// estado.generacion, no solo dentro de render().
+function actualizarIndicadorGeneracion() {
+  if (!indicadorGeneracion) return;
+  const activos = Object.entries(estado.generacion)
+    .filter(([, g]) => g.activo)
+    .map(([tipo]) => ETIQUETAS_GENERACION[tipo]);
+  indicadorGeneracion.innerHTML = activos.length === 0
+    ? ''
+    : `<div class="g2-generando-banner"><div class="spinner-mini"></div>Generando rutina de ${activos.join(', ')}…</div>`;
+}
 
 function inicioDeSemana(fechaStr) {
   const d = new Date(fechaStr + 'T00:00:00');
@@ -215,6 +246,13 @@ function render() {
 
   if (estado.pantalla === 'onboarding') renderOnboarding();
   else if (estado.pantalla === 'generador') renderGenerador();
+  else if (estado.pantalla === 'inicio') renderInicio();
+  else if (estado.pantalla === 'ajustar') renderAjustar();
+  else if (estado.pantalla === 'planes') renderPlanes();
+  else if (estado.pantalla === 'calistenia') renderCalistenia();
+  else if (estado.pantalla === 'rehabilitacion') renderRehabilitacion();
+  else if (estado.pantalla === 'entrenar') renderEntrenar();
+  else if (estado.pantalla === 'mas') renderMas();
   else if (estado.pantalla === 'rutina') renderRutina();
   else if (estado.pantalla === 'abdomen') renderAbdomen();
   else if (estado.pantalla === 'cardio') renderCardio();
@@ -223,26 +261,269 @@ function render() {
   else if (estado.pantalla === 'extra') renderExtra();
 
   renderNav();
+  actualizarIndicadorGeneracion();
+}
+
+// GymApp 2.0 primary nav (GA-005 product-model pass): Inicio / Planes /
+// Historial / Perfil — 4 destinations matching the mental model "what do
+// I do today / what programs am I following / what have I done / what
+// does GymApp know about me". The five training products (Fuerza, Cardio,
+// Core, Calistenia, Rehabilitación) live INSIDE Planes, not as their own
+// nav tabs — see renderPlanes(). Nothing about the underlying legacy
+// screens changed; only how they're reached.
+function irAPantalla(destino) {
+  estado.pantalla = destino;
+  render();
 }
 
 function renderNav() {
+  const enInicio = ['inicio', 'ajustar', 'entrenar'].includes(estado.pantalla);
+  const enPlanes = ['planes', 'rutina', 'abdomen', 'cardio', 'generador', 'calistenia', 'rehabilitacion', 'mas', 'extra'].includes(estado.pantalla);
   navContainer.innerHTML = `
     <div class="nav-inferior">
-      <button class="nav-item ${estado.pantalla === 'onboarding' ? 'activo' : ''}" data-nav="onboarding"><span class="icono">👤</span>Perfil</button>
-      <button class="nav-item ${estado.pantalla === 'generador' ? 'activo' : ''}" data-nav="generador"><span class="icono">⚙️</span>Generador</button>
-      <button class="nav-item ${estado.pantalla === 'rutina' ? 'activo' : ''}" data-nav="rutina"><span class="icono">📋</span>Rutina</button>
-      <button class="nav-item ${estado.pantalla === 'abdomen' ? 'activo' : ''}" data-nav="abdomen"><span class="icono">🔥</span>Abdomen</button>
-      <button class="nav-item ${estado.pantalla === 'cardio' ? 'activo' : ''}" data-nav="cardio"><span class="icono">🏃</span>Cardio</button>
-      <button class="nav-item ${estado.pantalla === 'extra' ? 'activo' : ''}" data-nav="extra"><span class="icono">🧗</span>Extra</button>
+      <button class="nav-item ${enInicio ? 'activo' : ''}" data-nav="inicio"><span class="icono">🏠</span>Inicio</button>
+      <button class="nav-item ${enPlanes ? 'activo' : ''}" data-nav="planes"><span class="icono">📚</span>Planes</button>
       <button class="nav-item ${estado.pantalla === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
-      <button class="nav-item" data-nav="salir"><span class="icono">🚪</span>Salir</button>
+      <button class="nav-item ${estado.pantalla === 'onboarding' ? 'activo' : ''}" data-nav="onboarding"><span class="icono">👤</span>Perfil</button>
     </div>`;
   navContainer.querySelectorAll('[data-nav]').forEach((btn) => {
-    btn.onclick = () => {
-      const destino = btn.dataset.nav;
+    btn.onclick = () => irAPantalla(btn.dataset.nav);
+  });
+}
+
+// =========================================================================
+// Inicio — GymApp 2.0 (GA-005 product-model pass). Answers "¿qué entreno
+// hoy?" by aggregating whatever each product already has scheduled
+// (today's Fuerza/Cardio/Core day, via the existing legacy state already
+// loaded by cargarRutina/cargarRutinaAbdomen/cargarRutinaCardio) through
+// the Today Coordinator (src/today-experience/today-coordinator.mjs) —
+// this function does not decide anything about exercises itself, it only
+// reads already-generated data and hands it to the coordinator/bridge.
+// Calistenia/Rehabilitación are not included in "today" here (they have
+// no daily-rotation data model yet — see src/today-experience/README.md);
+// they're reachable from Planes.
+// =========================================================================
+function renderInicio() {
+  if (!window.GymAppTodayExperience) {
+    app.innerHTML = '<div class="mensaje error">No se pudo cargar Inicio (módulo no disponible). Revisa la consola.</div>';
+    return;
+  }
+  const bridge = window.GymAppTodayExperience;
+
+  const componentes = {
+    fuerza: estado.dias && estado.dias.length > 0
+      ? { label: 'Fuerza', items: bridge.adaptFuerzaDay(estado.dias[estado.diaActivo]) }
+      : null,
+    cardio: estado.cardio.dias && estado.cardio.dias.length > 0
+      ? { label: 'Cardio', items: bridge.adaptCardioDay(estado.cardio.dias[estado.cardio.diaActivo]) }
+      : null,
+    core: estado.abdomen.dias && estado.abdomen.dias.length > 0
+      ? { label: 'Core', items: bridge.adaptAbdomenDay(estado.abdomen.dias[estado.abdomen.diaActivo]) }
+      : null,
+  };
+  const overview = bridge.buildTodayOverview(componentes);
+  const destinoPorProducto = { fuerza: 'rutina', cardio: 'cardio', core: 'abdomen' };
+
+  const tarjetasHtml = overview.components.map((c) => `
+    <div class="g2-today-item">
+      <div class="g2-today-item-info">
+        <div class="g2-today-item-label">${c.label}</div>
+        <div class="g2-today-item-meta">${c.itemCount} ejercicio(s) · ~${c.estimatedDurationMinutes} min</div>
+      </div>
+      <button type="button" class="g2-btn-secondary" data-ver="${c.product}">Ver</button>
+    </div>`).join('');
+
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      <header class="g2-appbar"><h1>Inicio</h1><p>¿Qué entrenamos hoy?</p></header>
+      ${overview.hasAnything ? `
+        <section class="g2-card">
+          <label class="etiqueta">Hoy</label>
+          ${tarjetasHtml}
+          <p class="subtitulo" style="margin-top:10px">Total estimado: ~${overview.totalEstimatedDurationMinutes} min</p>
+          <button type="button" class="boton-primario g2-cta" id="btn-empezar-combinado">Empezar entrenamiento</button>
+        </section>` : `
+        <div class="vacio">
+          <div class="icono-grande">📅</div>
+          <p>Aún no tienes planes activos para hoy.</p>
+        </div>
+        <button type="button" class="boton-primario g2-cta" id="btn-ir-planes">Ir a Planes</button>`}
+      <button type="button" class="boton-secundario" id="btn-ajustar-contexto" style="text-align:left;padding-left:0;margin-top:14px">🎛️ Ajustar contexto de hoy</button>
+      <button type="button" class="boton-secundario" id="btn-ver-planes" style="text-align:left;padding-left:0">📚 Ver todos mis planes</button>
+    </div>`));
+
+  app.querySelectorAll('[data-ver]').forEach((btn) => {
+    btn.onclick = () => irAPantalla(destinoPorProducto[btn.dataset.ver]);
+  });
+  const btnCombinado = document.getElementById('btn-empezar-combinado');
+  if (btnCombinado) {
+    btnCombinado.onclick = () => {
+      bridge.startSessionFromItems(overview.combinedItems, 'today-combined');
+      irAPantalla('entrenar');
+    };
+  }
+  const btnIrPlanes = document.getElementById('btn-ir-planes');
+  if (btnIrPlanes) btnIrPlanes.onclick = () => irAPantalla('planes');
+  document.getElementById('btn-ajustar-contexto').onclick = () => irAPantalla('ajustar');
+  document.getElementById('btn-ver-planes').onclick = () => irAPantalla('planes');
+}
+
+// Ajustar contexto de hoy: the full generic time/environment/modalities/
+// level/equipment form (secondary, reached from Inicio — "daily context
+// configuration should be secondary"). Same underlying flow as Calistenia
+// below, just unlocked to every modality.
+function renderAjustar() {
+  montarTodayExperience('home', {
+    title: 'Ajustar contexto de hoy',
+    subtitle: 'Genera una sesión eligiendo tú mismo cada opción.',
+  });
+}
+
+// =========================================================================
+// Planes — product hub for the five training products. Each card reuses
+// existing legacy generation/regeneration behavior where it already works
+// (Fuerza/Cardio/Core just open the existing, unchanged renderRutina/
+// renderCardio/renderAbdomen screens); Calistenia uses the new engine
+// (no legacy equivalent exists); Rehabilitación is an honest "not yet"
+// placeholder — see renderRehabilitacion().
+// =========================================================================
+function renderPlanes() {
+  const fuerzaActiva = estado.dias && estado.dias.length > 0;
+  const cardioActivo = estado.cardio.dias && estado.cardio.dias.length > 0;
+  const coreActivo = estado.abdomen.dias && estado.abdomen.dias.length > 0;
+
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      <header class="g2-appbar"><h1>Planes</h1><p>Tus programas de entrenamiento</p></header>
+
+      <div class="g2-product-card">
+        <div class="g2-product-info">
+          <div class="g2-product-name">💪 Fuerza / Gimnasio</div>
+          <div class="g2-product-status">${fuerzaActiva ? `${estado.dias.length} día(s) activos` : 'Sin plan activo'}</div>
+        </div>
+        <button type="button" class="g2-btn-secondary" data-plan-btn="rutina">${fuerzaActiva ? 'Ver plan' : 'Crear plan'}</button>
+      </div>
+
+      <div class="g2-product-card">
+        <div class="g2-product-info">
+          <div class="g2-product-name">🏃 Cardio</div>
+          <div class="g2-product-status">${cardioActivo ? `${estado.cardio.dias.length} día(s) activos` : 'Sin plan activo'}</div>
+        </div>
+        <button type="button" class="g2-btn-secondary" data-plan-btn="cardio">${cardioActivo ? 'Ver plan' : 'Crear plan'}</button>
+      </div>
+
+      <div class="g2-product-card">
+        <div class="g2-product-info">
+          <div class="g2-product-name">🔥 Core / Abdomen</div>
+          <div class="g2-product-status">${coreActivo ? `${estado.abdomen.dias.length} día(s) activos` : 'Sin plan activo'}</div>
+        </div>
+        <button type="button" class="g2-btn-secondary" data-plan-btn="abdomen">${coreActivo ? 'Ver plan' : 'Crear plan'}</button>
+      </div>
+
+      <div class="g2-product-card">
+        <div class="g2-product-info">
+          <div class="g2-product-name">🤸 Calistenia</div>
+          <div class="g2-product-status">Generación bajo demanda</div>
+        </div>
+        <button type="button" class="g2-btn-secondary" data-plan-btn="calistenia">Crear sesión</button>
+      </div>
+
+      <div class="g2-product-card g2-product-card-soon">
+        <div class="g2-product-info">
+          <div class="g2-product-name">🩹 Rehabilitación / Adaptaciones</div>
+          <div class="g2-product-status">Próximamente</div>
+        </div>
+        <button type="button" class="g2-btn-secondary" data-plan-btn="rehabilitacion">Ver</button>
+      </div>
+
+      <button type="button" class="boton-secundario" id="btn-mas-herramientas" style="text-align:left;padding-left:0;margin-top:10px">⋯ Más herramientas (Extra, Salir)</button>
+    </div>`));
+
+  app.querySelectorAll('[data-plan-btn]').forEach((btn) => {
+    btn.onclick = () => irAPantalla(btn.dataset.planBtn);
+  });
+  document.getElementById('btn-mas-herramientas').onclick = () => irAPantalla('mas');
+}
+
+// Calistenia: no legacy generator exists for this product, so it uses the
+// new deterministic pipeline directly (Context Engine -> Compatibility
+// Engine -> Workout Planner), locked to the calisthenics modality — same
+// underlying flow as "Ajustar", just product-scoped.
+function renderCalistenia() {
+  montarTodayExperience('home', {
+    lockedModalities: ['calisthenics'],
+    title: 'Calistenia',
+    subtitle: 'Genera tu sesión de calistenia de hoy.',
+  });
+}
+
+// Rehabilitación: an honest placeholder, not a fabricated feature.
+// GymApp's restriction model (src/context-engine) can filter exercises
+// away from a declared restriction, but there is no rehabilitation
+// plan/program concept yet (see docs/REENGINEERING_DECISION_FRAME.md's
+// "Rehabilitation activity" — a future domain concept, not built). Do not
+// invent one tonight; showing "próximamente" is the honest choice.
+function renderRehabilitacion() {
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      <header class="g2-appbar"><h1>Rehabilitación / Adaptaciones</h1><p>Próximamente</p></header>
+      <div class="vacio">
+        <div class="icono-grande">🩹</div>
+        <p>GymApp todavía no genera planes de rehabilitación.</p>
+      </div>
+      <p class="subtitulo">Esto requiere un modelo de restricciones/lesiones más completo que el actual — preferimos no inventar una recomendación sin ese soporte.</p>
+      <button type="button" class="boton-secundario" id="btn-volver-planes" style="text-align:left;padding-left:0">← Volver a Planes</button>
+    </div>`));
+  document.getElementById('btn-volver-planes').onclick = () => irAPantalla('planes');
+}
+
+// Entrenar: shows the in-progress active workout (state lives in
+// src/today-experience/workout-session.mjs's shared store, not in this
+// mount, so it survives navigating away and back). If nothing is in
+// progress, the module itself renders an empty state pointing back to
+// Inicio. Used both for the Today Coordinator's combined session (started
+// from Inicio) and for Calistenia's individual session.
+function renderEntrenar() {
+  montarTodayExperience('active');
+}
+
+function montarTodayExperience(pantallaModulo, opciones = {}) {
+  app.innerHTML = '<div id="today-root"></div>';
+  const contenedor = document.getElementById('today-root');
+  if (window.GymAppTodayExperience) {
+    window.GymAppTodayExperience.mount(contenedor, { screen: pantallaModulo, navigate: irAPantalla, ...opciones });
+  } else {
+    contenedor.innerHTML = '<div class="mensaje error">No se pudo cargar el módulo de entrenamiento. Revisa la consola.</div>';
+  }
+}
+
+// =========================================================================
+// Más — acceso temporal a pantallas heredadas (GA-005). Nada de su
+// contenido cambió; solo se movieron un nivel más profundo en la
+// navegación para que Hoy/Entrenar/Progreso/Perfil sean lo primario.
+// =========================================================================
+function renderMas() {
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      <h1 class="titulo">Más</h1>
+      <p class="subtitulo">Herramientas y pantallas anteriores de GymApp</p>
+      <div class="tarjeta-sesion" data-mas="generador"><div class="fecha">⚙️ Generador</div><span class="subtitulo">Preferencias y generación de rutinas (versión clásica)</span></div>
+      <div class="tarjeta-sesion" data-mas="rutina"><div class="fecha">📋 Rutina clásica</div><span class="subtitulo">Rutina de fuerza por días</span></div>
+      <div class="tarjeta-sesion" data-mas="abdomen"><div class="fecha">🔥 Abdomen</div><span class="subtitulo">Rutina de abdomen por días</span></div>
+      <div class="tarjeta-sesion" data-mas="cardio"><div class="fecha">🏃 Cardio</div><span class="subtitulo">Plan de cardio por días</span></div>
+      <div class="tarjeta-sesion" data-mas="extra"><div class="fecha">🧗 Extra</div><span class="subtitulo">Actividad extra (escalada, calistenia, otro)</span></div>
+      <div class="tarjeta-sesion" data-mas="salir"><div class="fecha">🚪 Salir</div><span class="subtitulo">Cerrar sesión</span></div>
+    </div>`));
+  app.querySelectorAll('[data-mas]').forEach((el) => {
+    el.style.cursor = 'pointer';
+    el.onclick = () => {
+      const destino = el.dataset.mas;
       if (destino === 'salir') { supabase.auth.signOut(); return; }
-      estado.pantalla = destino;
-      render();
+      irAPantalla(destino);
     };
   });
 }
@@ -397,27 +678,70 @@ async function guardarPerfil() {
 
 // Reutilizable desde la pestaña Rutina — asume que el perfil ya se guardó
 // antes desde Perfil (no vuelve a pedir peso/edad/metas aquí).
-async function invocarGeneracionFuerza(boton, mensajeDiv) {
-  boton.disabled = true;
-  boton.innerHTML = '<div class="spinner"></div>';
-  if (mensajeDiv) mensajeDiv.innerHTML = '';
+// Extrae un mensaje de error entendible para el usuario a partir de lo que
+// devuelve la Edge Function, SIN mostrar internos técnicos (detalles de
+// validación por ejercicio, JSON crudo, etc.) como única explicación —
+// esos detalles técnicos sí quedan en consola para depurar.
+function mensajeErrorGeneracionAmigable(cuerpoError) {
+  const codigo = cuerpoError?.codigo;
+  if (codigo === 'RESPUESTA_TRUNCADA' || codigo === 'VALIDACION_FALLIDA') {
+    return 'No pudimos construir una rutina válida con estas restricciones. '
+      + 'Tu información se conserva; intenta ajustar la rutina o revisar las restricciones activas.';
+  }
+  return cuerpoError?.error || 'No se pudo generar la rutina. Intenta de nuevo en un momento.';
+}
 
-  const { data, error } = await supabase.functions.invoke('generate-routine');
+// Llama a una Edge Function de generación (fuerza/abdomen/cardio) usando
+// SOLO estado.generacion[tipo] para el estado de carga/mensaje — nunca una
+// referencia de DOM capturada — así el resultado no se pierde si el
+// usuario navega a otra pantalla mientras la llamada sigue en curso (ver
+// el comentario en la definición de estado.generacion arriba).
+async function invocarGeneracion(tipo, nombreFuncion, body) {
+  if (estado.generacion[tipo].activo) return; // ya hay una generación de este tipo en curso — no duplicar
+
+  estado.generacion[tipo] = { activo: true, mensaje: null };
+  if (estado.pantalla === 'generador') renderGenerador();
+  actualizarIndicadorGeneracion();
+
+  const { data, error } = await supabase.functions.invoke(nombreFuncion, body ? { body } : undefined);
 
   if (error) {
-    let detalle = error.message;
-    try {
-      const cuerpo = await error.context.json();
-      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
-    } catch (e) {}
-    if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
-    boton.disabled = false;
-    boton.textContent = boton.dataset.textoOriginal || 'Generar mi rutina';
-    return;
+    let cuerpo = null;
+    try { cuerpo = await error.context.json(); } catch (e) {}
+    console.error(`[generación:${tipo}] falló:`, cuerpo || error.message);
+    estado.generacion[tipo] = { activo: false, mensaje: { tipo: 'error', texto: mensajeErrorGeneracionAmigable(cuerpo) } };
+  } else if (data.parcial) {
+    // Explícito, nunca silencioso: la Edge Function ya decidió que esta
+    // rutina es un resultado degradado (menos días de los pedidos porque
+    // las restricciones activas no permitían más de forma segura) — se
+    // muestra así, no como un "¡Listo!" normal. No es una afirmación de
+    // que la rutina fue validada médicamente; solo que se generó con
+    // menos volumen del solicitado.
+    estado.generacion[tipo] = {
+      activo: false,
+      mensaje: {
+        tipo: 'warning',
+        texto: `Se generaron ${data.dias_generados} de ${data.dias_solicitados} día(s) solicitados — `
+          + 'las restricciones activas no permitían completar los demás de forma segura con el catálogo actual. '
+          + 'Puedes ajustar tus restricciones o intentar de nuevo.',
+      },
+    };
+    if (tipo === 'fuerza') await cargarRutina();
+    else if (tipo === 'abdomen') await cargarRutinaAbdomen();
+    else if (tipo === 'cardio') await cargarRutinaCardio();
+  } else {
+    estado.generacion[tipo] = { activo: false, mensaje: { tipo: 'info', texto: `¡Listo! ${data.dias.length} día(s) generado(s).` } };
+    if (tipo === 'fuerza') await cargarRutina();
+    else if (tipo === 'abdomen') await cargarRutinaAbdomen();
+    else if (tipo === 'cardio') await cargarRutinaCardio();
   }
 
-  if (mensajeDiv) mensajeDiv.innerHTML = `<div class="mensaje info">¡Listo! Rutina de ${data.dias.length} días generada. ${data.rutina.resumen}</div>`;
-  await cargarRutina();
+  if (estado.pantalla === 'generador') renderGenerador();
+  actualizarIndicadorGeneracion();
+}
+
+function invocarGeneracionFuerza() {
+  return invocarGeneracion('fuerza', 'generate-routine');
 }
 
 // =========================================================================
@@ -496,7 +820,7 @@ async function regenerarDiaCardio(diaNumero) {
 async function cargarRutina() {
   estado.cargandoRutina = true;
   estado.errorRutina = null;
-  if (estado.pantalla === 'rutina') render();
+  if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
 
   const userId = estado.sesion.user.id;
 
@@ -531,7 +855,7 @@ async function cargarRutina() {
   if (rutinaError) {
     estado.errorRutina = `No se pudo cargar tu rutina: ${rutinaError.message}`;
     estado.cargandoRutina = false;
-    if (estado.pantalla === 'rutina') render();
+    if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
     return;
   }
 
@@ -539,7 +863,7 @@ async function cargarRutina() {
     estado.rutinaId = null;
     estado.dias = [];
     estado.cargandoRutina = false;
-    if (estado.pantalla === 'rutina') render();
+    if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
     return;
   }
 
@@ -552,7 +876,7 @@ async function cargarRutina() {
   if (ejerciciosError) {
     estado.errorRutina = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
     estado.cargandoRutina = false;
-    if (estado.pantalla === 'rutina') render();
+    if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
     return;
   }
 
@@ -616,14 +940,14 @@ async function cargarRutina() {
   estado.tasaConsistenciaReciente = tasas.length ? tasas.reduce((a, b) => a + b, 0) / tasas.length : null;
 
   estado.cargandoRutina = false;
-  if (estado.pantalla === 'rutina') render();
+  if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
 }
 
 async function cargarRutinaAbdomen() {
   const ab = estado.abdomen;
   ab.cargando = true;
   ab.error = null;
-  if (estado.pantalla === 'abdomen') render();
+  if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
 
   const userId = estado.sesion.user.id;
 
@@ -635,7 +959,7 @@ async function cargarRutinaAbdomen() {
   if (rutinaError) {
     ab.error = `No se pudo cargar tu rutina de abdomen: ${rutinaError.message}`;
     ab.cargando = false;
-    if (estado.pantalla === 'abdomen') render();
+    if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
     return;
   }
 
@@ -643,7 +967,7 @@ async function cargarRutinaAbdomen() {
     ab.rutinaId = null;
     ab.dias = [];
     ab.cargando = false;
-    if (estado.pantalla === 'abdomen') render();
+    if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
     return;
   }
 
@@ -656,7 +980,7 @@ async function cargarRutinaAbdomen() {
   if (ejerciciosError) {
     ab.error = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
     ab.cargando = false;
-    if (estado.pantalla === 'abdomen') render();
+    if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
     return;
   }
 
@@ -711,7 +1035,7 @@ async function cargarRutinaAbdomen() {
   ab.tasaConsistenciaReciente = tasas.length ? tasas.reduce((a, b) => a + b, 0) / tasas.length : null;
 
   ab.cargando = false;
-  if (estado.pantalla === 'abdomen') render();
+  if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
 }
 
 // =========================================================================
@@ -721,7 +1045,7 @@ async function cargarRutinaCardio() {
   const c = estado.cardio;
   c.cargando = true;
   c.error = null;
-  if (estado.pantalla === 'cardio') render();
+  if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
 
   const userId = estado.sesion.user.id;
 
@@ -733,14 +1057,14 @@ async function cargarRutinaCardio() {
   if (rutinaError) {
     c.error = `No se pudo cargar tu plan de cardio: ${rutinaError.message}`;
     c.cargando = false;
-    if (estado.pantalla === 'cardio') render();
+    if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
     return;
   }
   if (!rutina) {
     c.rutinaId = null;
     c.dias = [];
     c.cargando = false;
-    if (estado.pantalla === 'cardio') render();
+    if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
     return;
   }
   c.rutinaId = rutina.id;
@@ -751,7 +1075,7 @@ async function cargarRutinaCardio() {
   if (fasesError) {
     c.error = `No se pudieron cargar las fases: ${fasesError.message}`;
     c.cargando = false;
-    if (estado.pantalla === 'cardio') render();
+    if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
     return;
   }
 
@@ -792,7 +1116,7 @@ async function cargarRutinaCardio() {
   c.semanaActual = celdas;
 
   c.cargando = false;
-  if (estado.pantalla === 'cardio') render();
+  if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
 }
 
 function renderCardio() {
@@ -973,18 +1297,24 @@ function renderGenerador() {
 
       <div class="tarjeta-sesion">
         <div class="fecha">💪 Fuerza</div>
-        <button class="boton-secundario" id="g-btn-fuerza" style="text-align:left;padding-left:0">${estado.dias?.length ? 'Regenerar' : 'Generar'} rutina de fuerza</button>
-        <div id="g-mensaje-fuerza"></div>
+        <button class="boton-secundario" id="g-btn-fuerza" style="text-align:left;padding-left:0" ${estado.generacion.fuerza.activo ? 'disabled' : ''}>
+          ${estado.generacion.fuerza.activo ? '<div class="spinner"></div>' : `${estado.dias?.length ? 'Regenerar' : 'Generar'} rutina de fuerza`}
+        </button>
+        <div id="g-mensaje-fuerza">${estado.generacion.fuerza.mensaje ? `<div class="mensaje ${estado.generacion.fuerza.mensaje.tipo}">${estado.generacion.fuerza.mensaje.texto}</div>` : ''}</div>
       </div>
       <div class="tarjeta-sesion">
         <div class="fecha">🔥 Abdomen</div>
-        <button class="boton-secundario" id="g-btn-abdomen" style="text-align:left;padding-left:0">${estado.abdomen.dias?.length ? 'Regenerar' : 'Generar'} rutina de abdomen</button>
-        <div id="g-mensaje-abdomen"></div>
+        <button class="boton-secundario" id="g-btn-abdomen" style="text-align:left;padding-left:0" ${estado.generacion.abdomen.activo ? 'disabled' : ''}>
+          ${estado.generacion.abdomen.activo ? '<div class="spinner"></div>' : `${estado.abdomen.dias?.length ? 'Regenerar' : 'Generar'} rutina de abdomen`}
+        </button>
+        <div id="g-mensaje-abdomen">${estado.generacion.abdomen.mensaje ? `<div class="mensaje ${estado.generacion.abdomen.mensaje.tipo}">${estado.generacion.abdomen.mensaje.texto}</div>` : ''}</div>
       </div>
       <div class="tarjeta-sesion">
         <div class="fecha">🏃 Cardio</div>
-        <button class="boton-secundario" id="g-btn-cardio" style="text-align:left;padding-left:0">${estado.cardio.dias?.length ? 'Regenerar' : 'Generar'} plan de cardio</button>
-        <div id="g-mensaje-cardio"></div>
+        <button class="boton-secundario" id="g-btn-cardio" style="text-align:left;padding-left:0" ${estado.generacion.cardio.activo ? 'disabled' : ''}>
+          ${estado.generacion.cardio.activo ? '<div class="spinner"></div>' : `${estado.cardio.dias?.length ? 'Regenerar' : 'Generar'} plan de cardio`}
+        </button>
+        <div id="g-mensaje-cardio">${estado.generacion.cardio.mensaje ? `<div class="mensaje ${estado.generacion.cardio.mensaje.tipo}">${estado.generacion.cardio.mensaje.texto}</div>` : ''}</div>
       </div>
     </div>`));
 
@@ -1072,7 +1402,7 @@ function renderGenerador() {
   pintarPrioridad();
 
   document.getElementById('g-guardar').onclick = guardarPreferenciasGenerador;
-  document.getElementById('g-btn-fuerza').onclick = (e) => invocarGeneracionFuerza(e.target, document.getElementById('g-mensaje-fuerza'));
+  document.getElementById('g-btn-fuerza').onclick = () => invocarGeneracionFuerza();
   document.getElementById('g-btn-abdomen').onclick = () => generarRutinaAbdomenDesdeGenerador();
   document.getElementById('g-btn-cardio').onclick = () => generarRutinaCardioDesdeGenerador();
 }
@@ -1109,56 +1439,12 @@ async function guardarPreferenciasGenerador() {
   mensajeDiv.innerHTML = '<div class="mensaje info">Preferencias guardadas.</div>';
 }
 
-async function generarRutinaAbdomenDesdeGenerador() {
-  const boton = document.getElementById('g-btn-abdomen');
-  const mensajeDiv = document.getElementById('g-mensaje-abdomen');
-  boton.disabled = true;
-  boton.innerHTML = '<div class="spinner"></div>';
-  mensajeDiv.innerHTML = '';
-
-  const { data, error } = await supabase.functions.invoke('generate-routine', { body: { tipo: 'abdominales' } });
-
-  boton.disabled = false;
-  boton.textContent = estado.abdomen.dias?.length ? 'Regenerar rutina de abdomen' : 'Generar rutina de abdomen';
-
-  if (error) {
-    let detalle = error.message;
-    try {
-      const cuerpo = await error.context.json();
-      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
-    } catch (e) {}
-    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
-    return;
-  }
-
-  mensajeDiv.innerHTML = `<div class="mensaje info">¡Listo! ${data.dias.length} días generados.</div>`;
-  await cargarRutinaAbdomen();
+function generarRutinaAbdomenDesdeGenerador() {
+  return invocarGeneracion('abdomen', 'generate-routine', { tipo: 'abdominales' });
 }
 
-async function generarRutinaCardioDesdeGenerador() {
-  const boton = document.getElementById('g-btn-cardio');
-  const mensajeDiv = document.getElementById('g-mensaje-cardio');
-  boton.disabled = true;
-  boton.innerHTML = '<div class="spinner"></div>';
-  mensajeDiv.innerHTML = '';
-
-  const { data, error } = await supabase.functions.invoke('generate-cardio-plan');
-
-  boton.disabled = false;
-  boton.textContent = estado.cardio.dias?.length ? 'Regenerar plan de cardio' : 'Generar plan de cardio';
-
-  if (error) {
-    let detalle = error.message;
-    try {
-      const cuerpo = await error.context.json();
-      detalle = [cuerpo.error, cuerpo.detalle, ...(cuerpo.detalles || [])].filter(Boolean).join(' | ') || detalle;
-    } catch (e) {}
-    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo generar: ${detalle}</div>`;
-    return;
-  }
-
-  mensajeDiv.innerHTML = `<div class="mensaje info">¡Listo! ${data.dias.length} días generados.</div>`;
-  await cargarRutinaCardio();
+function generarRutinaCardioDesdeGenerador() {
+  return invocarGeneracion('cardio', 'generate-cardio-plan');
 }
 
 // =========================================================================

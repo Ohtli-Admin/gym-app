@@ -13,9 +13,33 @@
 //    usuario, sin imágenes (igual que hacíamos en Python, para ahorrar
 //    tokens).
 // 4. Le pide la rutina a Claude, forzando salida estructurada (tool use).
-// 5. Valida la respuesta contra el catálogo y las lesiones.
+// 5. Valida la respuesta contra el catálogo (IDs existen, equipo
+//    disponible, series en rango) y contra 'lesiones' vía el campo
+//    'contraindicaciones' del catálogo.
 // 6. Si es válida, la guarda en 'rutinas' y 'rutina_ejercicios', y desactiva
 //    cualquier rutina anterior del usuario.
+//
+// LÍMITES DE SEGURIDAD — LEER ANTES DE ASUMIR QUE ESTO ES "VALIDACIÓN
+// MÉDICA DETERMINISTA":
+// - El paso 5 es determinista en código (no depende de que el modelo "diga
+//   la verdad"), pero solo es tan bueno como los datos que valida. A la
+//   fecha de este comentario, 0 de 1,464 filas de `ejercicios` tienen
+//   `contraindicaciones` poblado (ver docs/LEGACY_EXERCISE_CROSSWALK.md).
+//   Es decir: hoy, este chequeo es una red de seguridad ESTRUCTURAL para
+//   cuando ese dato exista, no una garantía ACTIVA de que la rutina evita
+//   las lesiones/condiciones reales del usuario.
+// - El campo libre `condiciones_medicas` nunca es una entrada verificada
+//   de forma determinista — es contexto que se le pide al modelo respetar
+//   como mejor esfuerzo (ver `buildSystemPrompt`). Esta función no
+//   diagnostica, no infiere recuperación, y NO produce una prescripción de
+//   rehabilitación real: como mucho, adapta una rutina de fuerza/abdomen
+//   normal evitando los patrones de movimiento que el usuario describió.
+// - "La rutina generada" nunca debe describirse ni mostrarse al usuario
+//   como médicamente validada. Ver AGENTS.md ("GymApp no diagnostica
+//   condiciones médicas") y el futuro Compatibility Engine
+//   (src/compatibility-engine/README.md) para la validación determinista
+//   real contra atributos objetivos del ejercicio — ese trabajo no existe
+//   todavía en este flujo legado.
 // -----------------------------------------------------------------------
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -33,13 +57,24 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Esta SÍ hay que configurarla a mano como "secret" (ver pasos aparte):
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 
+// IMPORTANT: `dias` is declared BEFORE `resumen` deliberately. Claude
+// emits structured tool-call JSON fields in the order the schema declares
+// them; `resumen` is a free-text field this prompt demands be clinically
+// detailed (see the "condiciones_medicas" reasoning block below), which
+// can legitimately run long for a real, complex medical input. With
+// `resumen` first, a verbose response risks exhausting max_tokens BEFORE
+// `dias` (the actual routine — the part that matters) is ever written,
+// producing a response with no usable content at all. Putting `dias`
+// first means the routine itself is captured even if `resumen` later gets
+// cut short. This was the confirmed root cause of routines failing
+// validation twice in a row on real, lengthy medical/restriction input —
+// see this file's git history / GA-005 defect report for the analysis.
 const ROUTINE_TOOL = {
   name: "generar_rutina",
   description: "Genera una rutina de entrenamiento estructurada por días.",
   input_schema: {
     type: "object",
     properties: {
-      resumen: { type: "string" },
       dias: {
         type: "array",
         items: {
@@ -76,8 +111,9 @@ const ROUTINE_TOOL = {
           required: ["dia", "nombre", "ejercicios"],
         },
       },
+      resumen: { type: "string" },
     },
-    required: ["resumen", "dias"],
+    required: ["dias", "resumen"],
   },
 };
 
@@ -136,16 +172,29 @@ Reglas obligatorias:
      intensa de lo que sería sin la condición.
   4. NUNCA sacrifiques esto por "completar el día" — si el catálogo no tiene
      suficientes ejercicios seguros para esa zona, incluye menos ejercicios
-     en vez de forzar uno riesgoso.
-  5. En "resumen", sé CONCRETO sobre qué excluiste y por qué (ej. "Se excluyó
-     todo empuje sobre la cabeza y press pesado por la tendinopatía de
-     manguito rotador e inestabilidad AC reportada; el trabajo de hombro se
-     limita a estabilización controlada de baja carga."). Cierra siempre
-     recordando que esto no sustituye la valoración de un médico o
-     fisioterapeuta.
+     en vez de forzar uno riesgoso. Si de verdad no hay suficientes
+     ejercicios seguros para llenar "dias_disponibles" días completos,
+     genera MENOS DÍAS en vez de forzar contenido de relleno — un plan de 2
+     días bien construido es mejor que uno de 4 días con ejercicios
+     riesgosos o inventados.
+  5. IMPORTANTE — límites de esta herramienta: NO eres un generador de
+     protocolos de rehabilitación, y este texto libre no es un diagnóstico
+     que puedas verificar. No inventes un "plan de rehabilitación" a partir
+     de él. Tu única tarea aquí es adaptar una rutina de fuerza/abdomen
+     NORMAL evitando por completo los patrones de movimiento de la zona
+     afectada — nada más.
+  6. En "resumen", sé BREVE (máximo 3 oraciones) sobre qué excluiste y por
+     qué — una frase basta, ej. "Se excluyó todo empuje sobre la cabeza y
+     press pesado por la condición de hombro reportada; el trabajo de
+     hombro se limita a estabilización de baja carga." NO repitas el texto
+     médico del usuario ni redactes una explicación clínica extensa — esto
+     puede truncar tu respuesta antes de terminar "dias", que es la parte
+     que realmente importa. Cierra siempre recordando que esto no sustituye
+     la valoración de un médico o fisioterapeuta.
 - Distribuye los ejercicios en tantos días como "dias_disponibles" indique el
-  usuario, evitando entrenar el mismo grupo muscular en días consecutivos
-  cuando sea posible.
+  usuario (o menos, por la regla 4 anterior si aplica), evitando entrenar el
+  mismo grupo muscular en días consecutivos cuando sea posible. NUNCA generes
+  MÁS días de los que "dias_disponibles" indica.
 ${reglaVolumen}
 - Usa solo equipo presente en "equipo_disponible" del usuario.
 - Para CADA ejercicio, sugiere hasta 2 "alternativas" del mismo catálogo —
@@ -166,7 +215,18 @@ ${reglaVolumen}
 - Responde ÚNICAMENTE llamando a la herramienta "generar_rutina".`;
 }
 
-async function llamarClaude(systemPrompt: string, perfil: unknown) {
+// `messages` is owned by the caller so a failed attempt can be turned into
+// a proper multi-turn correction (see the retry loop below) instead of
+// blindly resending the exact same request — which, for a demanding,
+// deterministic-leaning generation task, tends to fail the same way twice.
+// Returns `stopReason` and `toolUseId` (not just `input`) so the caller
+// can tell a genuine truncation (`stop_reason === "max_tokens"`, `input`
+// possibly null) apart from a structurally-invalid-but-complete response,
+// and so a corrective follow-up can reference the exact tool_use id.
+async function llamarClaude(
+  systemPrompt: string,
+  messages: unknown[],
+): Promise<{ input: any; stopReason: string; toolUseId: string | null }> {
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -176,13 +236,15 @@ async function llamarClaude(systemPrompt: string, perfil: unknown) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-5",
-      max_tokens: 4096,
+      // Raised from 4096: the medical/restriction reasoning this prompt
+      // requires can legitimately produce a long response for a real,
+      // detailed case, even with `resumen` now capped to ~3 sentences and
+      // placed after `dias` in the schema (see ROUTINE_TOOL's comment).
+      max_tokens: 8192,
       system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
       tools: [ROUTINE_TOOL],
       tool_choice: { type: "tool", name: "generar_rutina" },
-      messages: [
-        { role: "user", content: `Genera la rutina para este usuario:\n${JSON.stringify(perfil)}` },
-      ],
+      messages,
     }),
   });
 
@@ -193,8 +255,7 @@ async function llamarClaude(systemPrompt: string, perfil: unknown) {
 
   const data = await resp.json();
   const bloque = data.content?.find((b: any) => b.type === "tool_use" && b.name === "generar_rutina");
-  if (!bloque) throw new Error("Claude no devolvió una tool call de generar_rutina.");
-  return bloque.input;
+  return { input: bloque?.input ?? null, stopReason: data.stop_reason, toolUseId: bloque?.id ?? null };
 }
 
 function validarRutina(rutina: any, catalogo: any[], perfil: any): string[] {
@@ -206,8 +267,18 @@ function validarRutina(rutina: any, catalogo: any[], perfil: any): string[] {
   const dias = rutina?.dias || [];
   if (dias.length === 0) errores.push("La rutina no tiene ningún día definido.");
 
-  if (perfil.dias_disponibles && dias.length !== perfil.dias_disponibles) {
-    errores.push(`Se esperaban ${perfil.dias_disponibles} días, la rutina trae ${dias.length}.`);
+  // El día-contrato es: exactamente `dias_disponibles` es lo preferido y lo
+  // que se sigue pidiendo explícitamente en el prompt. Generar MÁS días de
+  // los pedidos sigue siendo un error duro (el modelo no debe inventar
+  // volumen extra). Generar MENOS ya no se rechaza aquí — pero eso NO
+  // significa "aceptado silenciosamente como éxito normal": el llamador
+  // (más abajo, fuera de esta función) debe marcar explícitamente ese caso
+  // como un resultado PARCIAL/degradado, con su propio código legible por
+  // máquina y una explicación para el usuario — nunca tratarlo como
+  // equivalente a haber cumplido los días solicitados. Ver `esParcial` en
+  // el bucle de reintentos.
+  if (perfil.dias_disponibles && dias.length > perfil.dias_disponibles) {
+    errores.push(`Se esperaban máximo ${perfil.dias_disponibles} días, la rutina trae ${dias.length}.`);
   }
 
   let vistos = 0;
@@ -219,6 +290,12 @@ function validarRutina(rutina: any, catalogo: any[], perfil: any): string[] {
         errores.push(`Día ${dia.dia}: '${ej.exercise_id}' no existe en el catálogo.`);
         continue;
       }
+      // Determinista en código, pero solo activo cuando el catálogo trae
+      // `contraindicaciones` poblado — que hoy prácticamente nunca es el
+      // caso (ver el comentario de "LÍMITES DE SEGURIDAD" al inicio del
+      // archivo). No tratar el hecho de que este `filter` no encuentre
+      // nada como evidencia de que la rutina es segura para la condición
+      // del usuario — puede ser simplemente que el dato no existe.
       const contraindicado = (catEj.contraindicaciones || []).filter((c: string) => lesiones.has(c));
       if (contraindicado.length > 0) {
         errores.push(`Día ${dia.dia}: '${catEj.nombre}' contraindicado para: ${contraindicado.join(", ")}.`);
@@ -362,36 +439,68 @@ Deno.serve(async (req) => {
 
     // A veces (sobre todo con perfiles complejos: varias metas + lesiones +
     // condición médica detallada) el modelo puede degenerar en una
-    // respuesta sin sentido (cientos o miles de "días" vacíos). En vez de
-    // fallarle al usuario de una, reintentamos UNA vez automáticamente
-    // antes de rendirnos — esto cuesta una llamada extra solo si el primer
-    // intento sale mal, no siempre.
+    // respuesta sin sentido, o la respuesta puede fallar la validación
+    // determinista (ID inválido, contraindicación, más días de los
+    // pedidos). En vez de reintentar a ciegas con la MISMA petición
+    // (que tiende a fallar exactamente igual dos veces), el intento 2
+    // recibe retroalimentación real: qué falló específicamente, vía un
+    // turno de conversación `tool_result` — Claude ve su propio intento
+    // anterior y el motivo exacto del rechazo, no solo "inténtalo de
+    // nuevo". Esto NUNCA relaja la validación en sí (sigue siendo
+    // determinista y exactamente igual de estricta); solo hace que el
+    // reintento tenga una razón real de salir distinto.
+    const mensajesConversacion: any[] = [
+      { role: "user", content: `Genera la rutina para este usuario:\n${JSON.stringify(perfilParaPrompt)}` },
+    ];
+
     let rutina: any = null;
     let errores: string[] = [];
+    let motivoFalloFinal: "truncado" | "validacion" | null = null;
+    // Explícito, nunca implícito: true únicamente cuando una rutina sin
+    // errores duros trae MENOS días de los solicitados. Un resultado
+    // parcial sigue siendo determinista y sigue pasando por exactamente
+    // las mismas validaciones de catálogo/equipo/contraindicación — lo
+    // único que cambia es que el llamador debe comunicarlo como degradado,
+    // no como éxito completo silencioso (ver validarRutina más arriba).
+    let rutinaEsParcial = false;
     const INTENTOS_MAXIMOS = 2;
 
     for (let intento = 1; intento <= INTENTOS_MAXIMOS; intento++) {
-      const candidato = await llamarClaude(systemPrompt, perfilParaPrompt);
+      const { input: candidato, stopReason, toolUseId } = await llamarClaude(systemPrompt, mensajesConversacion);
 
       // Chequeo de cordura ANTES de procesar nada más: una rutina real no
-      // tiene más de ~10 días. Si trae más, es una respuesta degenerada —
-      // ni vale la pena traducir referencias, solo reintentar.
-      if (!candidato.dias || !Array.isArray(candidato.dias) || candidato.dias.length > 10) {
+      // tiene más de ~10 días, y si `stop_reason` fue "max_tokens" es
+      // señal directa de que la respuesta se cortó antes de completarse.
+      // En ninguno de los dos casos hay un tool_use completo y utilizable
+      // que se pueda reproducir como turno del asistente para dar
+      // retroalimentación específica — solo se puede reintentar con la
+      // conversación tal cual (el prompt ya exige un "resumen" breve para
+      // reducir justamente este riesgo).
+      if (!candidato || !candidato.dias || !Array.isArray(candidato.dias) || candidato.dias.length > 10) {
+        // Diagnóstico seguro: NUNCA se registra el texto médico del
+        // usuario ni el contenido completo del modelo — solo metadatos
+        // (conteos, stop_reason) y, como mucho, un fragmento acotado de
+        // 300 caracteres para depurar la forma de la respuesta.
         console.error(
-          `[generate-routine] tipo=${tipo} Respuesta degenerada en intento ${intento}: ` +
-          `dias.length=${candidato.dias?.length ?? "N/A"}, catalogo.length=${catalogo.length}. ` +
-          `Muestra de la respuesta: ${JSON.stringify(candidato).slice(0, 800)}`,
+          `[generate-routine] tipo=${tipo} intento=${intento} respuesta degenerada/truncada. ` +
+          `stop_reason=${stopReason}, dias.length=${candidato?.dias?.length ?? "N/A"}, ` +
+          `catalogo.length=${catalogo.length}, muestra=${JSON.stringify(candidato)?.slice(0, 300)}`,
         );
-        errores = [`Respuesta degenerada del modelo (${candidato.dias?.length ?? 0} "días"), reintentando...`];
+        motivoFalloFinal = "truncado";
+        errores = [`Respuesta degenerada o truncada del modelo (stop_reason=${stopReason}).`];
         if (intento < INTENTOS_MAXIMOS) continue;
-        errores = ["El modelo generó una respuesta inválida dos veces seguidas. Intenta de nuevo en un momento."];
         break;
       }
 
       // Traducir las referencias cortas (1, 2, 3...) de vuelta al
-      // exercise_id real del catálogo, antes de validar y guardar.
+      // exercise_id real del catálogo, antes de validar y guardar. Se
+      // trabaja sobre una COPIA — el `candidato` original (con las
+      // referencias numéricas tal como las escribió el modelo) se
+      // conserva intacto para poder reenviarlo como su propio turno de
+      // conversación si hace falta un reintento corrector.
+      const candidatoTraducido = structuredClone(candidato);
       const lesionesUsuario = new Set(perfilParaPrompt.lesiones || []);
-      for (const dia of candidato.dias || []) {
+      for (const dia of candidatoTraducido.dias || []) {
         for (const ej of dia.ejercicios || []) {
           const real = catalogoPorRef.get(String(ej.exercise_id));
           ej.exercise_id = real ? real.id : `REF_INVALIDA_${ej.exercise_id}`;
@@ -417,22 +526,69 @@ Deno.serve(async (req) => {
       }
 
       const erroresIntento = validarRutina(
-        candidato, catalogoFiltrado.map((ej) => ({ ...ej, exercise_id: ej.id })), perfilParaPrompt,
+        candidatoTraducido, catalogoFiltrado.map((ej) => ({ ...ej, exercise_id: ej.id })), perfilParaPrompt,
       );
 
       if (erroresIntento.length === 0) {
-        rutina = candidato;
+        rutina = candidatoTraducido;
         errores = [];
+        motivoFalloFinal = null;
+        // Explícito, no silencioso: si el catálogo/restricciones no
+        // permitieron llenar los días pedidos de forma segura, esto se
+        // marca como parcial aquí mismo, en el único lugar donde se decide
+        // que la rutina es válida — nunca se infiere después a partir de
+        // un simple conteo desconectado de la decisión de éxito.
+        rutinaEsParcial = Boolean(
+          perfilParaPrompt.dias_disponibles && candidatoTraducido.dias.length < perfilParaPrompt.dias_disponibles,
+        );
+        if (rutinaEsParcial) {
+          console.error(
+            `[generate-routine] tipo=${tipo} intento=${intento} rutina PARCIAL: ` +
+            `${candidatoTraducido.dias.length} de ${perfilParaPrompt.dias_disponibles} días solicitados.`,
+          );
+        }
         break;
       }
 
       errores = erroresIntento;
-      // si falló pero aún quedan intentos, seguimos el loop (reintenta)
+      motivoFalloFinal = "validacion";
+      console.error(`[generate-routine] tipo=${tipo} intento=${intento} validación falló: ${erroresIntento.length} error(es).`);
+
+      if (intento < INTENTOS_MAXIMOS && toolUseId) {
+        // Retroalimentación real para el siguiente intento, usando el
+        // `candidato` SIN traducir (con sus referencias numéricas
+        // originales) para que el modelo reconozca su propia respuesta.
+        mensajesConversacion.push({
+          role: "assistant",
+          content: [{ type: "tool_use", id: toolUseId, name: "generar_rutina", input: candidato }],
+        });
+        mensajesConversacion.push({
+          role: "user",
+          content: [{
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: `Tu rutina anterior no es válida por lo siguiente:\n${erroresIntento.map((e) => `- ${e}`).join("\n")}\n` +
+              `Corrige ESTOS problemas específicos y vuelve a llamar a "generar_rutina" con una rutina completa y válida. ` +
+              `No repitas la misma referencia de ejercicio inválida ni la misma contraindicación.`,
+          }],
+        });
+      }
     }
 
     if (!rutina) {
+      // Nunca se expone al usuario normal el detalle técnico (errores de
+      // validación por ejercicio, stop_reason, JSON del modelo) como única
+      // explicación — solo un mensaje entendible más un `codigo` para que
+      // el frontend elija su propio texto amigable. `detalles` se
+      // conserva en la respuesta por si un futuro panel de soporte/consola
+      // lo necesita, pero la UI normal no debe mostrarlo tal cual.
+      const codigo = motivoFalloFinal === "truncado" ? "RESPUESTA_TRUNCADA" : "VALIDACION_FALLIDA";
       return new Response(
-        JSON.stringify({ error: "La rutina generada no pasó la validación.", detalles: errores }),
+        JSON.stringify({
+          error: "No pudimos construir una rutina válida con estas restricciones.",
+          codigo,
+          detalles: errores,
+        }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -485,7 +641,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    return new Response(JSON.stringify({ rutina: nuevaRutina, dias: rutina.dias }), {
+    // `parcial`/`codigo` son explícitos siempre (no solo cuando son true),
+    // para que el frontend nunca tenga que inferir el estado a partir de
+    // contar `dias.length` por su cuenta — la decisión de si el resultado
+    // es completo o degradado se toma UNA sola vez, arriba, junto con el
+    // resto de la validación.
+    return new Response(JSON.stringify({
+      rutina: nuevaRutina,
+      dias: rutina.dias,
+      parcial: rutinaEsParcial,
+      codigo: rutinaEsParcial ? "RUTINA_PARCIAL_MENOS_DIAS" : null,
+      dias_solicitados: perfilParaPrompt.dias_disponibles,
+      dias_generados: rutina.dias.length,
+    }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

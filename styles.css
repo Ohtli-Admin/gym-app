@@ -259,6 +259,239 @@ textarea.input-modal {
   padding: 12px; color: var(--text); font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;
 }
 
+/* ---------- Hoy (GymApp 2.0 vertical slice, GA-005) ---------- */
+.mensaje.warning { background: var(--warning-soft); color: var(--warning); }
+.etiqueta-precaucion {
+  display: inline-block;
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.today-warnings { list-style: none; margin: 0 0 16px; padding: 0; }
+.today-warnings li { font-size: 12px; color: var(--warning); background: var(--warning-soft); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 6px; }
+.today-resumen { background: var(--surface); border-radius: var(--radius); padding: 14px; margin: 14px 0 12px; display: flex; justify-content: space-between; gap: 10px; }
+.today-resumen .item { text-align: center; flex: 1; }
+.today-resumen .item .num { font-size: 18px; font-weight: 800; color: var(--accent); display: block; }
+.today-resumen .item .txt { font-size: 11px; color: var(--text-muted); }
+
+/* ---------- GymApp 2.0 shell components (GA-005 product pass) ---------- */
+.g2-appbar { margin-bottom: 18px; }
+.g2-appbar h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 2px; }
+.g2-appbar p { font-size: 14px; color: var(--text-muted); }
+
+.g2-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  margin-bottom: 16px;
+}
+.g2-card .etiqueta { margin-top: 14px; }
+.g2-card .etiqueta:first-child { margin-top: 0; }
+
+.g2-disclosure { margin-top: 16px; }
+.g2-disclosure summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  list-style: none;
+  padding: 6px 0;
+}
+.g2-disclosure summary::-webkit-details-marker { display: none; }
+.g2-disclosure summary::before { content: '+ '; }
+.g2-disclosure[open] summary::before { content: '– '; }
+.g2-disclosure-demo summary { color: var(--text-muted); }
+
+.g2-goal-note { margin-top: 14px; margin-bottom: 0; }
+
+.g2-cta { margin-top: 18px; padding: 17px; font-size: 16px; }
+
+.g2-link-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  text-decoration: underline;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.g2-resume-banner { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.g2-exercise-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.g2-exercise-icon {
+  width: 42px; height: 42px; min-width: 42px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.g2-exercise-info { flex: 1; }
+.g2-exercise-name { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+.g2-exercise-meta { font-size: 12px; color: var(--text-muted); }
+
+.g2-session-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.g2-icon-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 38px; height: 38px;
+  font-size: 18px;
+  color: var(--text);
+  cursor: pointer;
+}
+.g2-progress-label { font-size: 12px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.g2-progress-track { height: 6px; background: var(--surface); border-radius: 4px; margin-bottom: 20px; overflow: hidden; }
+.g2-progress-fill { height: 100%; background: var(--accent); transition: width 0.25s ease; }
+
+.g2-current-exercise { text-align: center; margin-bottom: 20px; }
+.g2-modality-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 20px;
+  padding: 4px 12px;
+  margin-bottom: 10px;
+}
+.g2-current-exercise h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+.g2-prescription { font-size: 15px; color: var(--text-muted); }
+.g2-caution { margin-top: 10px; }
+.g2-caution p { font-size: 12px; color: var(--warning); margin-top: 4px; }
+
+.g2-set-logger { background: var(--surface); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+.g2-set-row-done { font-size: 13px; color: var(--text-muted); padding: 6px 0; border-bottom: 1px solid var(--border); }
+.g2-set-input-row { display: flex; gap: 8px; margin-top: 12px; }
+.g2-set-input-row input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 13px 10px;
+  color: var(--text);
+  font-size: 16px;
+  text-align: center;
+}
+.g2-btn-log {
+  background: var(--accent);
+  color: #1B1600;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.g2-btn-log-wide { width: 100%; padding: 16px; margin-bottom: 16px; }
+.g2-btn-log:disabled { opacity: 0.5; }
+
+.g2-session-controls { display: flex; gap: 8px; margin-bottom: 12px; }
+.g2-btn-secondary {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 13px 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+.g2-btn-secondary:disabled { opacity: 0.4; }
+
+.g2-exercise-list { margin-top: 20px; display: flex; flex-direction: column; gap: 6px; }
+.g2-mini-item {
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.g2-mini-item.activo { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.g2-mini-item.hecho { color: var(--success); }
+
+.g2-summary { text-align: center; padding: 20px 0; }
+.g2-summary-icon {
+  width: 56px; height: 56px;
+  line-height: 56px;
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 26px;
+  margin: 0 auto 14px;
+}
+
+/* ---------- Inicio: today items / Planes: product cards (GA-005 product-model pass) ---------- */
+.g2-today-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.g2-today-item:last-of-type { border-bottom: none; }
+.g2-today-item-label { font-size: 14px; font-weight: 700; }
+.g2-today-item-meta { font-size: 12px; color: var(--text-muted); }
+
+.g2-product-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 10px;
+}
+.g2-product-card-soon { opacity: 0.6; }
+.g2-product-name { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+.g2-product-status { font-size: 12px; color: var(--text-muted); }
+
+.g2-generando-banner {
+  position: fixed;
+  top: 12px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 998;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 30px;
+  padding: 8px 16px 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.spinner-mini {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: girar 0.7s linear infinite;
+}
+
 .banner-descanso {
   position: fixed;
   top: 12px; left: 50%;

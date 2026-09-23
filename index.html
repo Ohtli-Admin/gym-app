@@ -13,11 +13,21 @@
 </head>
 <body>
   <div id="app"><div class="pantalla-carga">Cargando…</div></div>
+  <!-- Vive fuera de #app a propósito: debe sobrevivir a que render()
+       reemplace app.innerHTML al cambiar de pantalla, para que una
+       generación de rutina en curso siga siendo visible aunque el
+       usuario navegue a otra sección. Ver actualizarIndicadorGeneracion()
+       en app.js. -->
+  <div id="indicador-generacion"></div>
   <div id="nav-container"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="supabaseClient.js"></script>
   <script src="app.js"></script>
+  <!-- GymApp 2.0 "Hoy" experience (GA-005) — a native ES module, loaded
+       separately from app.js because app.js is a classic script and
+       cannot use import/export. See src/today-experience/README.md. -->
+  <script type="module" src="src/today-experience/browser-entry.mjs"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));

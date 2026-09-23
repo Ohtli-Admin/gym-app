@@ -173,11 +173,20 @@ isn't a boolean.
 
 ## Plan id
 
-`planId` is a SHA-256-derived, deterministic fingerprint (`plan-id.mjs`) of
-exactly the values that shaped the plan (goal/environment/time/level/
-modalities/equipment/restriction ids+severities, `allowConditional`, and
-the final selected exercise ids) — no randomness, no timestamp. Equivalent
-inputs always produce the same `planId`.
+`planId` is a deterministic fingerprint (`plan-id.mjs`) of exactly the
+values that shaped the plan (goal/environment/time/level/modalities/
+equipment/restriction ids+severities, `allowConditional`, and the final
+selected exercise ids) — no randomness, no timestamp. Equivalent inputs
+always produce the same `planId`.
+
+**Browser portability:** this module is loaded unmodified as a native ES
+module in the browser by `src/today-experience` (GA-005) — no bundler, no
+transpilation. It intentionally does not import `node:crypto` (or any
+other Node built-in): the fingerprint is a small pure-JS FNV-1a-based hash
+(two 32-bit lanes) instead of SHA-256, since `planId` only needs to be
+stable and collision-resistant enough for a UI/debugging reference, not
+cryptographically secure. Same module, same output, in Node and in the
+browser. See `plan-id.test.mjs`.
 
 ## Module layout
 
@@ -185,7 +194,8 @@ inputs always produce the same `planId`.
   `MODALITY_PLANNING_DEFAULTS` (the planning-policy defaults).
 - `prescription-policy.mjs` — `resolveModalityPlanningDefaults(modality)`.
 - `allocate.mjs` — `allocateExercises` (the round-robin allocator).
-- `plan-id.mjs` — `computePlanId`.
+- `plan-id.mjs` — `computePlanId` (pure-JS, browser-portable — see "Plan id").
+- `plan-id.test.mjs` — determinism + browser-portability coverage for `computePlanId`.
 - `errors.mjs` — `PlannerInputError`.
 - `index.mjs` — `buildWorkoutPlan` (the only intended entry point),
   status/warning resolution, freezing.
@@ -213,4 +223,5 @@ inputs always produce the same `planId`.
 node --test src/context-engine/context-engine.test.mjs
 node --test src/compatibility-engine/compatibility-engine.test.mjs
 node --test src/workout-planner/workout-planner.test.mjs
+node --test src/workout-planner/plan-id.test.mjs
 ```
