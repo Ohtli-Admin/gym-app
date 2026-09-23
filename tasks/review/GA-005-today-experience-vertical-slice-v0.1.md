@@ -632,3 +632,59 @@ node --check app.js — clean
 git diff --check — clean
 ```
 Not deployed. Not committed. Not pushed.
+
+---
+
+## Result (fluid context input + generation diagnostics)
+
+**Ajustar contexto de hoy** now opens with a prominent free-text
+"¿Qué necesitas hoy?" field (≤500 chars), a "Guardar y volver a Inicio"
+action, and "Generar Fuerza / Generar Core" shortcuts that apply the note
+immediately (confirm first if a plan is active; progress/result shows on
+Inicio via the existing global generation banner/state). Below it, "Lo que
+GymApp ya sabe de ti" shows the saved profile restrictions (lesiones chips,
+condiciones_medicas truncated with "Ver todo", metas, días) with an
+explicit in-place "Editar restricciones" writing the same `perfiles`
+fields the legacy Generador/modal already write. The fast controls
+(time/environment/modalities/advanced) remain below, unchanged.
+
+**Free-text intent** is user intent, not a restriction: stored per-day in
+this browser only (`src/today-experience/today-intent.mjs`, key
+`gymapp.todayIntent.v1`), shown on Inicio ("Contexto de hoy · Editar"),
+and forwarded only to `generate-routine` as `intencion_hoy` (server
+re-normalizes and caps at 500 chars), placed in the user message with an
+explicit label and a prompt rule: preference/context only, not a
+diagnosis, no rehab protocols, never overrides lesiones/condiciones. It is
+never parsed into filters/contraindications in code, and never sent to
+the deterministic Calistenia/demo pipeline or to cardio.
+
+**Generation diagnostics** — `supabase/functions/generate-routine/diagnostico.ts`
+(pure; `validarRutina` moved here unchanged in rules, now returning
+`{codigo, texto}`). Every response (success and failure) carries a bounded
+`diagnostico` object and the function logs one `[generate-routine] diag`
+JSON line at `inicio`, `contexto`, each `intento`, and `fin` — so a
+runtime wall-clock kill is identifiable by a missing `fin`. Per attempt:
+`resultado`, `stop_reason`, `tiene_tool_input`, `claves_tool_input` (key
+names only), `dias_generados`, `truncado`, `errores_por_categoria`,
+`input_tokens`/`output_tokens`, `http_status_modelo`, `ms`. Codes:
+validation — `RUTINA_SIN_DIAS`, `DIAS_EXCEDIDOS`, `EJERCICIO_ID_INVALIDO`,
+`CONTRAINDICADO`, `EQUIPO_NO_DISPONIBLE`, `SERIES_FUERA_DE_RANGO`,
+`RUTINA_SIN_EJERCICIOS`; result/failure — `OK`, `OK_PARCIAL`,
+`TRUNCADO_MAX_TOKENS`, `SIN_TOOL_INPUT`, `DIAS_AUSENTES`,
+`DIAS_DEGENERADOS`, `VALIDACION_FALLIDA`, `ERROR_API_MODELO`,
+`PERFIL_NO_ENCONTRADO`, `CATALOGO_NO_DISPONIBLE`,
+`CATALOGO_ABDOMEN_INSUFICIENTE`, `PERSISTENCIA_RUTINA_FALLIDA`,
+`PERSISTENCIA_EJERCICIOS_FALLIDA`, `ERROR_INESPERADO`. Never logged:
+medical text, intent text, full profile, model output (the previous
+300-char model-output sample was removed). Client `codigo` values kept
+backward compatible; new `ERROR_MODELO` / `ERROR_GUARDADO` get friendly
+messages. `app.js` logs `[generación:<tipo>] diagnóstico` to the console
+only (HTTP status, client-side ms, codigo, diagnostico, or a ≤200-char
+non-JSON body snippet when the runtime killed the function).
+
+**Validation:** 80/80 tests (69 existing + 5 `today-intent` + 6
+`diagnostico`), `node --check` clean, `tsc --noEmit` clean on the Edge
+Function with a Deno shim, bridge exports verified via Node-stubbed
+`window`, `git diff --check` clean. Not deployed, not committed. Strength/Abs
+root cause **not yet identified** — requires deploying this instrumented
+function and one real-browser retest.

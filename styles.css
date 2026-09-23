@@ -518,3 +518,13 @@ textarea.input-modal {
   color: #1B1600;
   cursor: pointer;
 }
+
+/* ---------- Ajustar contexto de hoy: free-text intent (GA-005 fluid-context pass) ---------- */
+.g2-card textarea.input-modal { background: var(--bg); }
+.g2-intent-input { min-height: 96px; font-size: 15px; }
+.g2-intent-nota { font-size: 12px; margin: 8px 0 12px; }
+.g2-intent-acciones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.g2-intent-acciones .g2-btn-secondary { flex: 1 1 auto; }
+.g2-chip-lectura { cursor: default; }
+.g2-condiciones-resumen { margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.g2-contexto-texto { font-size: 14px; margin: 0 0 6px; overflow-wrap: anywhere; }

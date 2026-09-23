@@ -333,10 +333,29 @@ function renderInicio() {
       <button type="button" class="g2-btn-secondary" data-ver="${c.product}">Ver</button>
     </div>`).join('');
 
+  // Contexto de hoy (texto libre guardado en Ajustar) + el resultado de
+  // cualquier generación de Fuerza/Core lanzada desde ahí, para que el
+  // usuario vea aquí mismo si se aplicó o falló — sin ir al Generador.
+  const intencionHoy = leerIntencionHoy();
+  const mensajesGeneracion = ['fuerza', 'abdomen']
+    .filter((t) => estado.generacion[t].mensaje)
+    .map((t) => `<div class="mensaje ${estado.generacion[t].mensaje.tipo}">
+        <strong>${ETIQUETAS_GENERACION[t]}:</strong> ${escaparHtml(estado.generacion[t].mensaje.texto)}
+        <button type="button" class="g2-link-btn" data-descartar="${t}">Ocultar</button>
+      </div>`).join('');
+  const contextoHtml = intencionHoy || mensajesGeneracion ? `
+    <section class="g2-card">
+      ${intencionHoy ? `<label class="etiqueta">Contexto de hoy</label>
+        <p class="g2-contexto-texto">“${escaparHtml(intencionHoy)}”</p>
+        <button type="button" class="g2-link-btn" id="btn-editar-contexto">Editar</button>` : ''}
+      ${mensajesGeneracion}
+    </section>` : '';
+
   app.innerHTML = '';
   app.appendChild(h(`
     <div>
       <header class="g2-appbar"><h1>Inicio</h1><p>¿Qué entrenamos hoy?</p></header>
+      ${contextoHtml}
       ${overview.hasAnything ? `
         <section class="g2-card">
           <label class="etiqueta">Hoy</label>
@@ -367,17 +386,187 @@ function renderInicio() {
   if (btnIrPlanes) btnIrPlanes.onclick = () => irAPantalla('planes');
   document.getElementById('btn-ajustar-contexto').onclick = () => irAPantalla('ajustar');
   document.getElementById('btn-ver-planes').onclick = () => irAPantalla('planes');
+  const btnEditarContexto = document.getElementById('btn-editar-contexto');
+  if (btnEditarContexto) btnEditarContexto.onclick = () => irAPantalla('ajustar');
+  app.querySelectorAll('[data-descartar]').forEach((btn) => {
+    btn.onclick = () => {
+      estado.generacion[btn.dataset.descartar].mensaje = null;
+      renderInicio();
+    };
+  });
 }
 
-// Ajustar contexto de hoy: the full generic time/environment/modalities/
-// level/equipment form (secondary, reached from Inicio — "daily context
-// configuration should be secondary"). Same underlying flow as Calistenia
-// below, just unlocked to every modality.
+function escaparHtml(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function leerIntencionHoy() {
+  return window.GymAppTodayExperience?.readTodayIntent?.() || '';
+}
+
+// Ajustar contexto de hoy (GA-005 fluid-context pass). One place where the
+// user can (1) say in their own words what changed / what they need today,
+// (2) see — and if needed edit — the restrictions GymApp already has saved
+// in their profile, and (3) still use the fast session controls below.
+//
+// The free-text note is USER INTENT, not a restriction or diagnosis: it is
+// stored per-day in this browser (src/today-experience/today-intent.mjs),
+// shown on Inicio, and forwarded length-bounded to generate-routine as
+// labeled intent. Nothing in code parses it into filters/contraindications.
+// Structured restrictions (perfiles.lesiones/condiciones_medicas) stay a
+// separate, explicit edit.
 function renderAjustar() {
-  montarTodayExperience('home', {
-    title: 'Ajustar contexto de hoy',
-    subtitle: 'Genera una sesión eligiendo tú mismo cada opción.',
+  const maxIntencion = window.GymAppTodayExperience?.TODAY_INTENT_MAX_LENGTH || 500;
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      <header class="g2-appbar"><h1>Ajustar contexto de hoy</h1><p>Cuéntale a GymApp qué cambió o qué necesitas.</p></header>
+
+      <section class="g2-card">
+        <label class="etiqueta" for="ajustar-intencion">¿Qué necesitas hoy?</label>
+        <textarea class="input-modal g2-intent-input" id="ajustar-intencion" rows="4" maxlength="${maxIntencion}"
+          placeholder="Ej.: Me duele el hombro y quiero evitar cargarlo. Tengo solo 25 minutos. Hoy quiero pierna y cardio.">${escaparHtml(leerIntencionHoy())}</textarea>
+        <p class="subtitulo g2-intent-nota">Se usa como contexto al generar tus planes de Fuerza y Core hoy. No es un diagnóstico y no reemplaza las restricciones guardadas en tu perfil.</p>
+        <div id="ajustar-mensaje"></div>
+        <button type="button" class="boton-primario g2-cta" id="ajustar-guardar">Guardar y volver a Inicio</button>
+        <label class="etiqueta">Aplicar ahora (genera un plan nuevo que reemplaza al activo)</label>
+        <div class="g2-intent-acciones">
+          <button type="button" class="g2-btn-secondary" data-aplicar="fuerza">Generar Fuerza</button>
+          <button type="button" class="g2-btn-secondary" data-aplicar="abdomen">Generar Core</button>
+        </div>
+      </section>
+
+      <section class="g2-card" id="ajustar-perfil">
+        <label class="etiqueta">Lo que GymApp ya sabe de ti</label>
+        <p class="subtitulo">Cargando tu perfil…</p>
+      </section>
+
+      <label class="etiqueta" style="margin-top:18px">Sesión rápida con controles</label>
+      <div id="today-root"></div>
+    </div>`));
+
+  const textarea = document.getElementById('ajustar-intencion');
+  const guardarIntencion = () => window.GymAppTodayExperience?.saveTodayIntent?.(textarea.value) ?? '';
+
+  document.getElementById('ajustar-guardar').onclick = () => {
+    guardarIntencion();
+    irAPantalla('inicio');
+  };
+
+  app.querySelectorAll('[data-aplicar]').forEach((btn) => {
+    btn.onclick = () => {
+      const tipo = btn.dataset.aplicar;
+      const tienePlan = tipo === 'fuerza' ? (estado.dias && estado.dias.length > 0) : (estado.abdomen.dias && estado.abdomen.dias.length > 0);
+      if (tienePlan && !confirm(`Esto genera un plan nuevo de ${ETIQUETAS_GENERACION[tipo]} que reemplaza al activo. ¿Continuar?`)) return;
+      guardarIntencion();
+      if (tipo === 'fuerza') invocarGeneracionFuerza();
+      else generarRutinaAbdomenDesdeGenerador();
+      irAPantalla('inicio');
+    };
   });
+
+  if (window.GymAppTodayExperience) {
+    window.GymAppTodayExperience.mount(document.getElementById('today-root'), { screen: 'home', navigate: irAPantalla, title: null });
+  }
+
+  pintarPerfilEnAjustar();
+}
+
+// Read-only summary of the saved profile restrictions, with an explicit
+// in-place "Editar" that writes the same perfiles fields the legacy
+// Generador/modal already write (lesiones, condiciones_medicas) — so the
+// user never has to leave this screen just to correct them.
+async function pintarPerfilEnAjustar() {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: perfil } = await supabase.from('perfiles')
+    .select('metas, lesiones, condiciones_medicas, dias_disponibles')
+    .eq('id', user.id).maybeSingle();
+
+  const seccion = document.getElementById('ajustar-perfil');
+  if (!seccion || estado.pantalla !== 'ajustar') return; // el usuario ya navegó a otra pantalla
+
+  if (!perfil) {
+    seccion.innerHTML = `<label class="etiqueta">Lo que GymApp ya sabe de ti</label>
+      <p class="subtitulo">Aún no tienes perfil guardado. Guárdalo desde Perfil para poder generar planes.</p>`;
+    return;
+  }
+
+  const edicion = { lesiones: [...(perfil.lesiones || [])], abierta: false, verTodo: false };
+  const LIMITE_RESUMEN = 160;
+
+  function pintar() {
+    const condiciones = perfil.condiciones_medicas || '';
+    const condicionesCorta = condiciones.length > LIMITE_RESUMEN && !edicion.verTodo
+      ? `${condiciones.slice(0, LIMITE_RESUMEN)}…`
+      : condiciones;
+    const lesionesHtml = (perfil.lesiones || []).length
+      ? perfil.lesiones.map((l) => `<span class="chip activo g2-chip-lectura">${escaparHtml(l)}</span>`).join('')
+      : '<span class="subtitulo">Ninguna registrada</span>';
+
+    seccion.innerHTML = `
+      <label class="etiqueta">Lo que GymApp ya sabe de ti</label>
+      ${edicion.abierta ? `
+        <label class="etiqueta">Lesiones o limitaciones</label>
+        <div class="chip-grid" id="ajustar-lesiones"></div>
+        <label class="etiqueta">Condición médica específica (opcional)</label>
+        <textarea class="input-modal" id="ajustar-condiciones">${escaparHtml(condiciones)}</textarea>
+        <div id="ajustar-perfil-mensaje"></div>
+        <div class="g2-intent-acciones">
+          <button type="button" class="g2-btn-secondary" id="ajustar-perfil-cancelar">Cancelar</button>
+          <button type="button" class="g2-btn-secondary" id="ajustar-perfil-guardar">Guardar restricciones</button>
+        </div>` : `
+        <div class="chip-grid">${lesionesHtml}</div>
+        ${condiciones ? `<p class="subtitulo g2-condiciones-resumen">${escaparHtml(condicionesCorta)}
+          ${condiciones.length > LIMITE_RESUMEN ? `<button type="button" class="g2-link-btn" id="ajustar-ver-todo">${edicion.verTodo ? 'Ver menos' : 'Ver todo'}</button>` : ''}</p>` : ''}
+        <p class="subtitulo">Metas: ${escaparHtml((perfil.metas || []).join(', ') || '—')} · ${perfil.dias_disponibles || '—'} día(s) de gym por semana</p>
+        <p class="subtitulo">Estas restricciones se guardan en tu perfil y se usan en cada generación hasta que tú las cambies.</p>
+        <button type="button" class="g2-btn-secondary" id="ajustar-perfil-editar">Editar restricciones</button>`}`;
+
+    if (!edicion.abierta) {
+      document.getElementById('ajustar-perfil-editar').onclick = () => { edicion.abierta = true; pintar(); };
+      const verTodo = document.getElementById('ajustar-ver-todo');
+      if (verTodo) verTodo.onclick = () => { edicion.verTodo = !edicion.verTodo; pintar(); };
+      return;
+    }
+
+    const lesionesDiv = document.getElementById('ajustar-lesiones');
+    const pintarLesiones = () => {
+      lesionesDiv.innerHTML = LESIONES_COMUNES.map((l) => `<button type="button" class="chip ${edicion.lesiones.includes(l) ? 'activo' : ''}" data-al="${l}">${l}</button>`).join('');
+      lesionesDiv.querySelectorAll('[data-al]').forEach((b) => {
+        b.onclick = () => {
+          const l = b.dataset.al;
+          edicion.lesiones = edicion.lesiones.includes(l) ? edicion.lesiones.filter((x) => x !== l) : [...edicion.lesiones, l];
+          pintarLesiones();
+        };
+      });
+    };
+    pintarLesiones();
+
+    document.getElementById('ajustar-perfil-cancelar').onclick = () => {
+      edicion.lesiones = [...(perfil.lesiones || [])];
+      edicion.abierta = false;
+      pintar();
+    };
+    document.getElementById('ajustar-perfil-guardar').onclick = async () => {
+      const btn = document.getElementById('ajustar-perfil-guardar');
+      btn.disabled = true;
+      const condicionesNuevas = document.getElementById('ajustar-condiciones').value.trim() || null;
+      const { error } = await supabase.from('perfiles')
+        .update({ lesiones: edicion.lesiones, condiciones_medicas: condicionesNuevas })
+        .eq('id', user.id);
+      if (error) {
+        document.getElementById('ajustar-perfil-mensaje').innerHTML = `<div class="mensaje error">No se pudo guardar: ${escaparHtml(error.message)}</div>`;
+        btn.disabled = false;
+        return;
+      }
+      perfil.lesiones = edicion.lesiones;
+      perfil.condiciones_medicas = condicionesNuevas;
+      edicion.abierta = false;
+      pintar();
+    };
+  }
+
+  pintar();
 }
 
 // =========================================================================
@@ -688,7 +877,38 @@ function mensajeErrorGeneracionAmigable(cuerpoError) {
     return 'No pudimos construir una rutina válida con estas restricciones. '
       + 'Tu información se conserva; intenta ajustar la rutina o revisar las restricciones activas.';
   }
+  if (codigo === 'ERROR_MODELO') return 'El servicio de generación no respondió bien. Intenta de nuevo en un momento.';
+  if (codigo === 'ERROR_GUARDADO') return 'La rutina se generó pero no se pudo guardar. Intenta de nuevo.';
   return cuerpoError?.error || 'No se pudo generar la rutina. Intenta de nuevo en un momento.';
+}
+
+// Diagnóstico de desarrollo — SOLO consola, nunca la UI. Resume por qué
+// falló (o cómo salió) una generación: estado HTTP, tiempo total visto por
+// el cliente, `codigo` y el objeto `diagnostico` acotado que devuelve
+// generate-routine (intentos, stop_reason, conteos por categoría de error;
+// sin texto médico ni respuesta del modelo). Si el cuerpo no es JSON (p.ej.
+// la función fue cortada por límite de tiempo del runtime), se registra un
+// fragmento acotado del texto para poder identificarlo.
+async function registrarDiagnosticoGeneracion(tipo, { data, error, ms }) {
+  const info = { tipo, ms_cliente: ms };
+  if (error) {
+    info.error_nombre = error.name;
+    info.http_status = error.context?.status ?? null;
+    let texto = null;
+    try { texto = await error.context.text(); } catch (e) {}
+    let cuerpo = null;
+    try { cuerpo = texto ? JSON.parse(texto) : null; } catch (e) { info.cuerpo_no_json = texto?.slice(0, 200) ?? null; }
+    info.codigo = cuerpo?.codigo ?? null;
+    info.diagnostico = cuerpo?.diagnostico ?? null;
+    info.detalles = Array.isArray(cuerpo?.detalles) ? cuerpo.detalles.slice(0, 10) : null;
+    if (!cuerpo) info.nota = 'Sin cuerpo JSON: revisar límite de tiempo/recursos del runtime o red (ver ms_cliente y http_status).';
+    console.warn(`[generación:${tipo}] diagnóstico (falló)`, info);
+    return cuerpo;
+  }
+  info.codigo = data?.codigo ?? null;
+  info.diagnostico = data?.diagnostico ?? null;
+  console.info(`[generación:${tipo}] diagnóstico (ok)`, info);
+  return null;
 }
 
 // Llama a una Edge Function de generación (fuerza/abdomen/cardio) usando
@@ -701,14 +921,20 @@ async function invocarGeneracion(tipo, nombreFuncion, body) {
 
   estado.generacion[tipo] = { activo: true, mensaje: null };
   if (estado.pantalla === 'generador') renderGenerador();
+  else if (estado.pantalla === 'inicio') renderInicio();
   actualizarIndicadorGeneracion();
 
-  const { data, error } = await supabase.functions.invoke(nombreFuncion, body ? { body } : undefined);
+  // Contexto libre de hoy ("¿Qué necesitas hoy?", ver renderAjustar): solo
+  // generate-routine lo acepta, como intención etiquetada — nunca como
+  // restricción. Sin nota, el cuerpo queda exactamente como antes.
+  const intencionHoy = nombreFuncion === 'generate-routine' ? leerIntencionHoy() : '';
+  const cuerpoPeticion = intencionHoy ? { ...(body || {}), intencion_hoy: intencionHoy } : body;
+
+  const inicioMs = Date.now();
+  const { data, error } = await supabase.functions.invoke(nombreFuncion, cuerpoPeticion ? { body: cuerpoPeticion } : undefined);
+  const cuerpo = await registrarDiagnosticoGeneracion(tipo, { data, error, ms: Date.now() - inicioMs });
 
   if (error) {
-    let cuerpo = null;
-    try { cuerpo = await error.context.json(); } catch (e) {}
-    console.error(`[generación:${tipo}] falló:`, cuerpo || error.message);
     estado.generacion[tipo] = { activo: false, mensaje: { tipo: 'error', texto: mensajeErrorGeneracionAmigable(cuerpo) } };
   } else if (data.parcial) {
     // Explícito, nunca silencioso: la Edge Function ya decidió que esta
@@ -737,6 +963,7 @@ async function invocarGeneracion(tipo, nombreFuncion, body) {
   }
 
   if (estado.pantalla === 'generador') renderGenerador();
+  else if (estado.pantalla === 'inicio') renderInicio();
   actualizarIndicadorGeneracion();
 }
 

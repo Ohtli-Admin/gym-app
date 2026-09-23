@@ -83,8 +83,11 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
   let demoOpen = false;
 
   function renderForm() {
+    // `title: null` lets the host screen render its own header above this
+    // form (app.js's "Ajustar contexto de hoy" puts the free-text intent
+    // card first).
     container.innerHTML = `
-      <header class="g2-appbar"><h1>${title}</h1><p>${subtitle}</p></header>
+      ${title ? `<header class="g2-appbar"><h1>${title}</h1><p>${subtitle}</p></header>` : ''}
 
       <section class="g2-card">
         <label class="etiqueta">Tiempo disponible</label>

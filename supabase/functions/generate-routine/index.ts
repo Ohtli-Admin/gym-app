@@ -43,6 +43,20 @@
 // -----------------------------------------------------------------------
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  RESULTADO,
+  clasificarFormaRespuesta,
+  describirIntento,
+  nuevoIdDiagnostico,
+  textoAcotado,
+  validarRutina,
+  type ErrorValidacion,
+  type IntentoDiagnostico,
+} from "./diagnostico.ts";
+
+// Límite duro para la nota libre "¿Qué necesitas hoy?" que puede mandar el
+// cliente (ver app.js renderAjustar). Igual al del cliente.
+const INTENCION_HOY_MAX = 500;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -206,6 +220,15 @@ ${reglaVolumen}
   cuándo usarla, ej. "si la polea está ocupada" o "si te molesta el
   hombro". Si no hay una alternativa razonable, deja el arreglo vacío — no
   inventes una mala solo por rellenar.
+- Si el mensaje del usuario incluye "intencion_hoy", es lo que el usuario
+  escribió HOY con sus propias palabras sobre qué necesita o qué cambió
+  (ej. poco tiempo, un énfasis, molestia en una zona, una meta próxima).
+  Úsalo solo como PREFERENCIA/CONTEXTO para orientar la selección y el
+  volumen dentro de las reglas anteriores. NO es un diagnóstico, no lo
+  interpretes clínicamente, no inventes un protocolo de rehabilitación a
+  partir de él, y no sustituye ni anula "lesiones"/"condiciones_medicas".
+  Si menciona molestia en una zona, puedes ser más conservador con esa
+  zona. Nunca lo repitas textualmente en "resumen".
 - Si "evitar_maquinas" es true, PRIORIZA ejercicios con equipo "barra",
   "mancuernas", "polea" o "peso_corporal" sobre los de equipo "maquina" —
   el usuario prefiere esto porque las máquinas suelen tener fila de espera
@@ -223,10 +246,25 @@ ${reglaVolumen}
 // can tell a genuine truncation (`stop_reason === "max_tokens"`, `input`
 // possibly null) apart from a structurally-invalid-but-complete response,
 // and so a corrective follow-up can reference the exact tool_use id.
+// La API de Claude respondió no-2xx. Solo lleva el status y un fragmento
+// acotado del cuerpo de error de la API (nunca el prompt ni el perfil).
+class ErrorApiModelo extends Error {
+  status: number;
+  constructor(status: number, texto: string) {
+    super(`Error de la API de Claude (${status}): ${textoAcotado(texto)}`);
+    this.status = status;
+  }
+}
+
 async function llamarClaude(
   systemPrompt: string,
   messages: unknown[],
-): Promise<{ input: any; stopReason: string; toolUseId: string | null }> {
+): Promise<{
+  input: any;
+  stopReason: string;
+  toolUseId: string | null;
+  usage: { input_tokens?: number; output_tokens?: number } | null;
+}> {
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -250,67 +288,17 @@ async function llamarClaude(
 
   if (!resp.ok) {
     const texto = await resp.text();
-    throw new Error(`Error de la API de Claude (${resp.status}): ${texto}`);
+    throw new ErrorApiModelo(resp.status, texto);
   }
 
   const data = await resp.json();
   const bloque = data.content?.find((b: any) => b.type === "tool_use" && b.name === "generar_rutina");
-  return { input: bloque?.input ?? null, stopReason: data.stop_reason, toolUseId: bloque?.id ?? null };
-}
-
-function validarRutina(rutina: any, catalogo: any[], perfil: any): string[] {
-  const errores: string[] = [];
-  const catalogoPorId = new Map(catalogo.map((e) => [e.exercise_id, e]));
-  const lesiones = new Set(perfil.lesiones || []);
-  const equipoDisponible = new Set(perfil.equipo_disponible || []);
-
-  const dias = rutina?.dias || [];
-  if (dias.length === 0) errores.push("La rutina no tiene ningún día definido.");
-
-  // El día-contrato es: exactamente `dias_disponibles` es lo preferido y lo
-  // que se sigue pidiendo explícitamente en el prompt. Generar MÁS días de
-  // los pedidos sigue siendo un error duro (el modelo no debe inventar
-  // volumen extra). Generar MENOS ya no se rechaza aquí — pero eso NO
-  // significa "aceptado silenciosamente como éxito normal": el llamador
-  // (más abajo, fuera de esta función) debe marcar explícitamente ese caso
-  // como un resultado PARCIAL/degradado, con su propio código legible por
-  // máquina y una explicación para el usuario — nunca tratarlo como
-  // equivalente a haber cumplido los días solicitados. Ver `esParcial` en
-  // el bucle de reintentos.
-  if (perfil.dias_disponibles && dias.length > perfil.dias_disponibles) {
-    errores.push(`Se esperaban máximo ${perfil.dias_disponibles} días, la rutina trae ${dias.length}.`);
-  }
-
-  let vistos = 0;
-  for (const dia of dias) {
-    for (const ej of dia.ejercicios || []) {
-      vistos++;
-      const catEj = catalogoPorId.get(ej.exercise_id);
-      if (!catEj) {
-        errores.push(`Día ${dia.dia}: '${ej.exercise_id}' no existe en el catálogo.`);
-        continue;
-      }
-      // Determinista en código, pero solo activo cuando el catálogo trae
-      // `contraindicaciones` poblado — que hoy prácticamente nunca es el
-      // caso (ver el comentario de "LÍMITES DE SEGURIDAD" al inicio del
-      // archivo). No tratar el hecho de que este `filter` no encuentre
-      // nada como evidencia de que la rutina es segura para la condición
-      // del usuario — puede ser simplemente que el dato no existe.
-      const contraindicado = (catEj.contraindicaciones || []).filter((c: string) => lesiones.has(c));
-      if (contraindicado.length > 0) {
-        errores.push(`Día ${dia.dia}: '${catEj.nombre}' contraindicado para: ${contraindicado.join(", ")}.`);
-      }
-      if (equipoDisponible.size > 0 && !equipoDisponible.has(catEj.equipo)) {
-        errores.push(`Día ${dia.dia}: '${catEj.nombre}' requiere equipo no disponible (${catEj.equipo}).`);
-      }
-      if (typeof ej.series !== "number" || ej.series < 1 || ej.series > 6) {
-        errores.push(`Día ${dia.dia}: series fuera de rango para '${ej.exercise_id}' (${ej.series}).`);
-      }
-    }
-  }
-  if (vistos === 0) errores.push("La rutina no incluye ningún ejercicio.");
-
-  return errores;
+  return {
+    input: bloque?.input ?? null,
+    stopReason: data.stop_reason,
+    toolUseId: bloque?.id ?? null,
+    usage: data.usage ?? null,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -318,16 +306,70 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Diagnóstico acotado de esta petición (ver diagnostico.ts). Se registra
+  // en los logs de la función en cada paso — así, si el runtime corta la
+  // función por tiempo, el último log dice hasta dónde llegó — y se
+  // devuelve en la respuesta como `diagnostico` para la consola del
+  // navegador. NUNCA contiene texto médico, la intención libre, el perfil
+  // completo ni la respuesta del modelo.
+  const inicioMs = Date.now();
+  const diagnostico: {
+    id: string;
+    tipo: string;
+    fallo: string | null;
+    catalogo_len: number | null;
+    dias_solicitados: number | null;
+    tiene_condiciones_medicas: boolean | null;
+    condiciones_medicas_len: number | null;
+    num_lesiones: number | null;
+    tiene_intencion_hoy: boolean;
+    intentos: IntentoDiagnostico[];
+    ms_total: number | null;
+  } = {
+    id: nuevoIdDiagnostico(),
+    tipo: "fuerza",
+    fallo: null,
+    catalogo_len: null,
+    dias_solicitados: null,
+    tiene_condiciones_medicas: null,
+    condiciones_medicas_len: null,
+    num_lesiones: null,
+    tiene_intencion_hoy: false,
+    intentos: [],
+    ms_total: null,
+  };
+  const log = (evento: string, extra: Record<string, unknown> = {}) =>
+    console.log(`[generate-routine] diag ${JSON.stringify({ id: diagnostico.id, tipo: diagnostico.tipo, evento, ms: Date.now() - inicioMs, ...extra })}`);
+  const responder = (status: number, cuerpo: Record<string, unknown>, fallo: string | null = null) => {
+    diagnostico.fallo = fallo;
+    diagnostico.ms_total = Date.now() - inicioMs;
+    log("fin", { status, fallo });
+    return new Response(JSON.stringify({ ...cuerpo, diagnostico }), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  };
+
   try {
     // "fuerza" por default: así las llamadas existentes (sin body) del
     // botón "Generar mi rutina" original siguen funcionando sin cambios.
     let tipo = "fuerza";
+    // Nota libre "¿Qué necesitas hoy?" (opcional). Solo contexto para el
+    // modelo, etiquetado como intención — nunca se convierte en filtro,
+    // contraindicación ni restricción en código.
+    let intencionHoy = "";
     try {
       const body = await req.json();
       if (body?.tipo) tipo = body.tipo;
+      if (typeof body?.intencion_hoy === "string") {
+        intencionHoy = body.intencion_hoy.replace(/\s+/g, " ").trim().slice(0, INTENCION_HOY_MAX);
+      }
     } catch (_e) {
       // sin body — está bien, usa el default
     }
+    diagnostico.tipo = tipo;
+    diagnostico.tiene_intencion_hoy = intencionHoy.length > 0;
+    log("inicio");
     if (!["fuerza", "abdominales"].includes(tipo)) {
       return new Response(JSON.stringify({ error: `Tipo de rutina no soportado todavía: ${tipo}` }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -362,10 +404,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (perfilError || !perfil) {
-      return new Response(
-        JSON.stringify({ error: "No se encontró tu perfil. Guárdalo primero desde la app." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return responder(400, { error: "No se encontró tu perfil. Guárdalo primero desde la app." }, RESULTADO.PERFIL_NO_ENCONTRADO);
     }
 
     const { data: catalogoCompleto, error: catalogoError } = await supabaseUsuario
@@ -373,10 +412,7 @@ Deno.serve(async (req) => {
       .select("id, nombre, grupo_muscular, equipo, nivel, contraindicaciones");
 
     if (catalogoError || !catalogoCompleto) {
-      return new Response(JSON.stringify({ error: "No se pudo cargar el catálogo de ejercicios." }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return responder(500, { error: "No se pudo cargar el catálogo de ejercicios." }, RESULTADO.CATALOGO_NO_DISPONIBLE);
     }
 
     const equipoDisponible = new Set(perfil.equipo_disponible || []);
@@ -397,12 +433,10 @@ Deno.serve(async (req) => {
       // elegir y puede degenerar en una respuesta larga y sin sentido —
       // mejor cortar aquí, ANTES de gastar la llamada.
       if (catalogoFiltrado.length < 3) {
-        return new Response(
-          JSON.stringify({
-            error: `Tu catálogo solo tiene ${catalogoFiltrado.length} ejercicios de abdomen etiquetados así — no es suficiente para generar una rutina variada. Revisa cómo está etiquetado el grupo muscular en tu tabla 'ejercicios'.`,
-          }),
-          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        diagnostico.catalogo_len = catalogoFiltrado.length;
+        return responder(422, {
+          error: `Tu catálogo solo tiene ${catalogoFiltrado.length} ejercicios de abdomen etiquetados así — no es suficiente para generar una rutina variada. Revisa cómo está etiquetado el grupo muscular en tu tabla 'ejercicios'.`,
+        }, RESULTADO.CATALOGO_ABDOMEN_INSUFICIENTE);
       }
     }
 
@@ -435,6 +469,20 @@ Deno.serve(async (req) => {
       evitar_maquinas: perfil.evitar_maquinas || false,
     };
 
+    // Solo metadatos (longitud/conteos), nunca el contenido.
+    diagnostico.catalogo_len = catalogo.length;
+    diagnostico.dias_solicitados = perfilParaPrompt.dias_disponibles ?? null;
+    diagnostico.tiene_condiciones_medicas = Boolean(perfilParaPrompt.condiciones_medicas);
+    diagnostico.condiciones_medicas_len = perfilParaPrompt.condiciones_medicas ? String(perfilParaPrompt.condiciones_medicas).length : 0;
+    diagnostico.num_lesiones = Array.isArray(perfilParaPrompt.lesiones) ? perfilParaPrompt.lesiones.length : 0;
+    log("contexto", {
+      catalogo_len: diagnostico.catalogo_len,
+      dias_solicitados: diagnostico.dias_solicitados,
+      condiciones_medicas_len: diagnostico.condiciones_medicas_len,
+      num_lesiones: diagnostico.num_lesiones,
+      tiene_intencion_hoy: diagnostico.tiene_intencion_hoy,
+    });
+
     const systemPrompt = buildSystemPrompt(catalogo, tipo);
 
     // A veces (sobre todo con perfiles complejos: varias metas + lesiones +
@@ -449,45 +497,68 @@ Deno.serve(async (req) => {
     // nuevo". Esto NUNCA relaja la validación en sí (sigue siendo
     // determinista y exactamente igual de estricta); solo hace que el
     // reintento tenga una razón real de salir distinto.
-    const mensajesConversacion: any[] = [
-      { role: "user", content: `Genera la rutina para este usuario:\n${JSON.stringify(perfilParaPrompt)}` },
-    ];
+    const mensajeInicial = intencionHoy
+      ? `Genera la rutina para este usuario:\n${JSON.stringify(perfilParaPrompt)}\n\n` +
+        `intencion_hoy (texto libre del usuario, contexto/preferencia — NO diagnóstico ni restricción verificada):\n` +
+        JSON.stringify(intencionHoy)
+      : `Genera la rutina para este usuario:\n${JSON.stringify(perfilParaPrompt)}`;
+    const mensajesConversacion: any[] = [{ role: "user", content: mensajeInicial }];
 
     let rutina: any = null;
-    let errores: string[] = [];
-    let motivoFalloFinal: "truncado" | "validacion" | null = null;
+    let errores: ErrorValidacion[] = [];
+    let motivoFalloFinal: string | null = null;
     // Explícito, nunca implícito: true únicamente cuando una rutina sin
     // errores duros trae MENOS días de los solicitados. Un resultado
     // parcial sigue siendo determinista y sigue pasando por exactamente
     // las mismas validaciones de catálogo/equipo/contraindicación — lo
     // único que cambia es que el llamador debe comunicarlo como degradado,
-    // no como éxito completo silencioso (ver validarRutina más arriba).
+    // no como éxito completo silencioso (ver validarRutina en diagnostico.ts).
     let rutinaEsParcial = false;
     const INTENTOS_MAXIMOS = 2;
 
     for (let intento = 1; intento <= INTENTOS_MAXIMOS; intento++) {
-      const { input: candidato, stopReason, toolUseId } = await llamarClaude(systemPrompt, mensajesConversacion);
+      const inicioIntentoMs = Date.now();
+      const registrarIntento = (resultado: string, datos: {
+        input?: any; stopReason?: string | null; errores?: ErrorValidacion[];
+        usage?: any; httpStatusModelo?: number | null;
+      }) => {
+        const d = describirIntento({
+          intento,
+          resultado,
+          input: datos.input ?? null,
+          stopReason: datos.stopReason ?? null,
+          errores: datos.errores,
+          usage: datos.usage,
+          httpStatusModelo: datos.httpStatusModelo,
+          ms: Date.now() - inicioIntentoMs,
+        });
+        diagnostico.intentos.push(d);
+        log("intento", { ...d });
+      };
 
-      // Chequeo de cordura ANTES de procesar nada más: una rutina real no
-      // tiene más de ~10 días, y si `stop_reason` fue "max_tokens" es
-      // señal directa de que la respuesta se cortó antes de completarse.
-      // En ninguno de los dos casos hay un tool_use completo y utilizable
-      // que se pueda reproducir como turno del asistente para dar
+      let respuestaModelo;
+      try {
+        respuestaModelo = await llamarClaude(systemPrompt, mensajesConversacion);
+      } catch (err) {
+        if (!(err instanceof ErrorApiModelo)) throw err;
+        registrarIntento(RESULTADO.ERROR_API_MODELO, { httpStatusModelo: err.status });
+        motivoFalloFinal = RESULTADO.ERROR_API_MODELO;
+        errores = [{ codigo: RESULTADO.ERROR_API_MODELO, texto: err.message }];
+        break;
+      }
+      const { input: candidato, stopReason, toolUseId, usage } = respuestaModelo;
+
+      // Chequeo de cordura ANTES de procesar nada más: sin tool_use, sin
+      // `dias`, más de ~10 días, o `stop_reason === "max_tokens"` sin
+      // `dias` utilizable. En ninguno de esos casos hay un tool_use
+      // completo que se pueda reproducir como turno del asistente para dar
       // retroalimentación específica — solo se puede reintentar con la
-      // conversación tal cual (el prompt ya exige un "resumen" breve para
-      // reducir justamente este riesgo).
-      if (!candidato || !candidato.dias || !Array.isArray(candidato.dias) || candidato.dias.length > 10) {
-        // Diagnóstico seguro: NUNCA se registra el texto médico del
-        // usuario ni el contenido completo del modelo — solo metadatos
-        // (conteos, stop_reason) y, como mucho, un fragmento acotado de
-        // 300 caracteres para depurar la forma de la respuesta.
-        console.error(
-          `[generate-routine] tipo=${tipo} intento=${intento} respuesta degenerada/truncada. ` +
-          `stop_reason=${stopReason}, dias.length=${candidato?.dias?.length ?? "N/A"}, ` +
-          `catalogo.length=${catalogo.length}, muestra=${JSON.stringify(candidato)?.slice(0, 300)}`,
-        );
-        motivoFalloFinal = "truncado";
-        errores = [`Respuesta degenerada o truncada del modelo (stop_reason=${stopReason}).`];
+      // conversación tal cual.
+      const falloForma = clasificarFormaRespuesta(candidato, stopReason);
+      if (falloForma) {
+        registrarIntento(falloForma, { input: candidato, stopReason, usage });
+        motivoFalloFinal = falloForma;
+        errores = [{ codigo: falloForma, texto: `Respuesta inutilizable del modelo (stop_reason=${stopReason}).` }];
         if (intento < INTENTOS_MAXIMOS) continue;
         break;
       }
@@ -541,18 +612,13 @@ Deno.serve(async (req) => {
         rutinaEsParcial = Boolean(
           perfilParaPrompt.dias_disponibles && candidatoTraducido.dias.length < perfilParaPrompt.dias_disponibles,
         );
-        if (rutinaEsParcial) {
-          console.error(
-            `[generate-routine] tipo=${tipo} intento=${intento} rutina PARCIAL: ` +
-            `${candidatoTraducido.dias.length} de ${perfilParaPrompt.dias_disponibles} días solicitados.`,
-          );
-        }
+        registrarIntento(rutinaEsParcial ? RESULTADO.OK_PARCIAL : RESULTADO.OK, { input: candidato, stopReason, usage });
         break;
       }
 
       errores = erroresIntento;
-      motivoFalloFinal = "validacion";
-      console.error(`[generate-routine] tipo=${tipo} intento=${intento} validación falló: ${erroresIntento.length} error(es).`);
+      motivoFalloFinal = RESULTADO.VALIDACION_FALLIDA;
+      registrarIntento(RESULTADO.VALIDACION_FALLIDA, { input: candidato, stopReason, errores: erroresIntento, usage });
 
       if (intento < INTENTOS_MAXIMOS && toolUseId) {
         // Retroalimentación real para el siguiente intento, usando el
@@ -567,7 +633,7 @@ Deno.serve(async (req) => {
           content: [{
             type: "tool_result",
             tool_use_id: toolUseId,
-            content: `Tu rutina anterior no es válida por lo siguiente:\n${erroresIntento.map((e) => `- ${e}`).join("\n")}\n` +
+            content: `Tu rutina anterior no es válida por lo siguiente:\n${erroresIntento.map((e) => `- ${e.texto}`).join("\n")}\n` +
               `Corrige ESTOS problemas específicos y vuelve a llamar a "generar_rutina" con una rutina completa y válida. ` +
               `No repitas la misma referencia de ejercicio inválida ni la misma contraindicación.`,
           }],
@@ -576,21 +642,24 @@ Deno.serve(async (req) => {
     }
 
     if (!rutina) {
-      // Nunca se expone al usuario normal el detalle técnico (errores de
-      // validación por ejercicio, stop_reason, JSON del modelo) como única
+      // Nunca se expone al usuario normal el detalle técnico como única
       // explicación — solo un mensaje entendible más un `codigo` para que
-      // el frontend elija su propio texto amigable. `detalles` se
-      // conserva en la respuesta por si un futuro panel de soporte/consola
-      // lo necesita, pero la UI normal no debe mostrarlo tal cual.
-      const codigo = motivoFalloFinal === "truncado" ? "RESPUESTA_TRUNCADA" : "VALIDACION_FALLIDA";
-      return new Response(
-        JSON.stringify({
-          error: "No pudimos construir una rutina válida con estas restricciones.",
-          codigo,
-          detalles: errores,
-        }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      // el frontend elija su propio texto amigable. `codigo` conserva sus
+      // valores previos (RESPUESTA_TRUNCADA / VALIDACION_FALLIDA) para no
+      // romper al cliente; el motivo exacto va en `diagnostico.fallo`.
+      if (motivoFalloFinal === RESULTADO.ERROR_API_MODELO) {
+        return responder(502, {
+          error: "El servicio de generación no respondió correctamente.",
+          codigo: "ERROR_MODELO",
+          detalles: errores.map((e) => e.texto),
+        }, motivoFalloFinal);
+      }
+      const codigo = motivoFalloFinal === RESULTADO.VALIDACION_FALLIDA ? "VALIDACION_FALLIDA" : "RESPUESTA_TRUNCADA";
+      return responder(422, {
+        error: "No pudimos construir una rutina válida con estas restricciones.",
+        codigo,
+        detalles: errores.map((e) => e.texto).slice(0, 20),
+      }, motivoFalloFinal);
     }
 
     // A partir de aquí usamos el cliente "admin" (service role) SOLO para
@@ -614,10 +683,11 @@ Deno.serve(async (req) => {
       .single();
 
     if (rutinaError || !nuevaRutina) {
-      return new Response(JSON.stringify({ error: "No se pudo guardar la rutina.", detalle: rutinaError?.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return responder(500, {
+        error: "No se pudo guardar la rutina.",
+        codigo: "ERROR_GUARDADO",
+        detalle: textoAcotado(rutinaError?.message),
+      }, RESULTADO.PERSISTENCIA_RUTINA_FALLIDA);
     }
 
     const filas = rutina.dias.flatMap((dia: any) =>
@@ -635,10 +705,11 @@ Deno.serve(async (req) => {
 
     const { error: ejerciciosError } = await supabaseAdmin.from("rutina_ejercicios").insert(filas);
     if (ejerciciosError) {
-      return new Response(
-        JSON.stringify({ error: "No se pudieron guardar los ejercicios.", detalle: ejerciciosError.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return responder(500, {
+        error: "No se pudieron guardar los ejercicios.",
+        codigo: "ERROR_GUARDADO",
+        detalle: textoAcotado(ejerciciosError.message),
+      }, RESULTADO.PERSISTENCIA_EJERCICIOS_FALLIDA);
     }
 
     // `parcial`/`codigo` son explícitos siempre (no solo cuando son true),
@@ -646,21 +717,15 @@ Deno.serve(async (req) => {
     // contar `dias.length` por su cuenta — la decisión de si el resultado
     // es completo o degradado se toma UNA sola vez, arriba, junto con el
     // resto de la validación.
-    return new Response(JSON.stringify({
+    return responder(200, {
       rutina: nuevaRutina,
       dias: rutina.dias,
       parcial: rutinaEsParcial,
       codigo: rutinaEsParcial ? "RUTINA_PARCIAL_MENOS_DIAS" : null,
       dias_solicitados: perfilParaPrompt.dias_disponibles,
       dias_generados: rutina.dias.length,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Error inesperado", detalle: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return responder(500, { error: "Error inesperado", detalle: textoAcotado(err) }, RESULTADO.ERROR_INESPERADO);
   }
 });

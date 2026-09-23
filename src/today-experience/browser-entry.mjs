@@ -9,6 +9,7 @@ import { mount } from './today-panel.mjs';
 import { adaptFuerzaDay, adaptAbdomenDay, adaptCardioDay } from './legacy-adapter.mjs';
 import { buildTodayOverview } from './today-coordinator.mjs';
 import { createSessionFromItems, setActiveSession } from './workout-session.mjs';
+import { readTodayIntent, saveTodayIntent, TODAY_INTENT_MAX_LENGTH } from './today-intent.mjs';
 
 // Used by app.js's Inicio screen (the Today Coordinator's "Empezar
 // entrenamiento completo" action): builds one combined active-workout
@@ -25,4 +26,7 @@ window.GymAppTodayExperience = {
   adaptCardioDay,
   buildTodayOverview,
   startSessionFromItems,
+  readTodayIntent: () => readTodayIntent(),
+  saveTodayIntent: (text) => saveTodayIntent(text),
+  TODAY_INTENT_MAX_LENGTH,
 };
