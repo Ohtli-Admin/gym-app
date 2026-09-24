@@ -38,29 +38,34 @@ below for why.
 
 ## How it's reached
 
-GymApp 2.0's primary nav (`app.js`'s `renderNav()`) is now **Hoy / Entrenar
-/ Progreso / Perfil / Más** — Hoy is the default post-login screen. Every
-legacy screen (Generador, Rutina clásica, Abdomen, Cardio, Extra) and
-logout still work exactly as before, just reached one tap deeper via
-**Más**; Progreso and Perfil are the existing `renderHistorial()`/
-`renderOnboarding()` screens, unchanged, just relabeled/repositioned.
+As of the GA-005 UX reorganization pass, GymApp's global nav (`app.js`'s
+`renderNav()`) is exactly **Perfil / Entrenamiento / Historial**, with
+Perfil as the default post-login screen. There is one obvious place per
+action:
 
-1. `index.html` loads `app.js` (the existing classic script, unchanged in
-   behavior) and, separately, `src/today-experience/browser-entry.mjs` as
-   a native ES module (`<script type="module">`).
-2. `app.js` gained: the nav restructure above, `estado.pantalla === 'hoy'`
-   / `'entrenar'` / `'mas'` branches in `render()`, and three small
-   functions — `renderHoy()`, `renderEntrenar()` (both delegate to
-   `window.GymAppTodayExperience.mount(container, { screen, navigate })`),
-   and `renderMas()` (a plain list of legacy destinations + logout, styled
-   with existing `.tarjeta-sesion`, no new logic). No domain or
-   orchestration logic was added to `app.js` — see `browser-entry.mjs`'s
-   comment for why this bridge exists (classic scripts cannot `import`).
-3. Everything else — collecting input, running the pipeline, active-workout
-   state, and rendering all of it — lives in this directory.
+- **Perfil** (`renderPerfil()`): the persistent context GymApp uses:
+  basic data and level, goals, availability (days, equipment), and
+  restrictions (injuries, medical conditions, machine preference). This is
+  the only place that context is edited. It has no generation actions.
+- **Entrenamiento** (`renderEntrenamiento()`): the hub of every training
+  product (see "Product model" below). Every create, regenerate or
+  change-days action goes through `abrirGeneracionPlan()` ->
+  `abrirModalGeneracion()` -> `invocarGeneracion()`.
+- **Historial** (`renderHistorial()`): completed activity, plus the entry
+  to log extra activity (`renderExtra()`).
 
-In the running app: log in and you land on **Hoy** directly. After
-generating a plan, tap **"Empezar entrenamiento"** to enter **Entrenar**.
+1. `index.html` loads `app.js` (classic script) and, separately,
+   `src/today-experience/browser-entry.mjs` as a native ES module.
+2. `app.js` owns routing and legacy Supabase-backed screens; this
+   directory provides the on-demand session builder (`mount`, screen
+   `'home'`), the active-workout screen (`mount`, screen `'active'`), and
+   the pure helpers bridged on `window.GymAppTodayExperience`
+   (`special-training.mjs`, `today-intent.mjs`, the legacy adapters and
+   Today Coordinator).
+
+Removed destinations: Inicio, Planes, Más, "Ajustar contexto de hoy",
+Generador, and the Rehabilitación placeholder. An unknown or old screen
+name falls back to Perfil.
 
 ## Module layout
 
@@ -126,43 +131,55 @@ verification" section.
 
 ## Product model
 
-GymApp 2.0 is **five separate training products** sharing one profile/
-context — not one merged routine (per the product-model correction). This
-module's job is (a) the shared active-workout session engine every product
-can use, and (b) the Today Coordinator that optionally combines several
-products' today items into one session. It does **not** own product
-generation itself except for Calistenia (no legacy equivalent exists).
+Every training product lives inside **Entrenamiento** and follows the same
+pattern. With an active plan, the hub card's single action is **Ver
+plan**. The product screen then shows the plan, with the secondary actions
+("Regenerar plan o cambiar días", "Regenerar solo este día") behind
+**Ajustar plan**. Without a plan, the only action is **Crear plan**, which
+opens a modal that asks only for days. Everything else comes from Perfil,
+and weekly plan generation never asks for session duration.
 
-| Product | Plan/generation | Reached via | "Today" item source |
-|---|---|---|---|
-| Fuerza / Gimnasio | Legacy (`renderRutina`/`renderGenerador`, unchanged) | Planes -> `rutina` | `adaptFuerzaDay(estado.dias[estado.diaActivo])` |
-| Cardio | Legacy (`renderCardio`/`renderGenerador`, unchanged) | Planes -> `cardio` | `adaptCardioDay(estado.cardio.dias[...])` |
-| Core / Abdomen | Legacy (`renderAbdomen`/`renderGenerador`, unchanged) | Planes -> `abdomen` | `adaptAbdomenDay(estado.abdomen.dias[...])` |
-| Calistenia | New engine, locked to `modalities: ['calisthenics']` | Planes -> `calistenia` | Not aggregated into Inicio (session-only, no daily-rotation data model yet) |
-| Rehabilitación / Adaptaciones | **Not built** — honest placeholder | Planes -> `rehabilitacion` | — |
+| Product | Plan/generation | Reached via |
+|---|---|---|
+| Fuerza / Gimnasio | Legacy `generate-routine` / `regenerate-day` | Entrenamiento -> `rutina` |
+| Cardio | Legacy `generate-cardio-plan` / `regenerate-cardio-day` | Entrenamiento -> `cardio` |
+| Core / Abdomen | Legacy `generate-routine {tipo:'abdominales'}` / `regenerate-day` | Entrenamiento -> `abdomen` |
+| Calistenia | On-demand session only (new engine, locked to `calisthenics`); **no persisted plan yet**, and the UI says so | Entrenamiento -> `calistenia` |
+| Entrenamiento especial | See below | Entrenamiento -> `especial` |
 
-`app.js`'s `renderInicio()` is the Today Coordinator's UI: it reads
-`estado.dias`/`estado.cardio.dias`/`estado.abdomen.dias` (already loaded
-by the existing legacy loaders — no new Supabase calls), adapts today's
-day for whichever products have one, and calls `buildTodayOverview()` to
-get a per-product summary plus one combined item list. Tapping "Empezar
-entrenamiento" calls the bridge's `startSessionFromItems(combinedItems,
-'today-combined')` (which internally is
-`setActiveSession(createSessionFromItems(...))`) and navigates to
-`entrenar` — the **same** active-workout screen Calistenia's own session
-uses, now running a session whose exercises came from three different
-legacy, Supabase-backed sources. Tapping a single product's own "Ver"
-button instead opens that product's existing screen directly (its own
-proven execution/logging path, untouched).
+Fuerza and Core share `perfiles.dias_disponibles` because `generate-routine`
+reads the day count from the profile for both. The creation modal says so
+explicitly.
 
-**Rehabilitación is intentionally not implemented** — `AGENTS.md` and this
-module's own domain boundary forbid inferring diagnoses/recovery, and
-`docs/REENGINEERING_DECISION_FRAME.md` treats "Rehabilitation activity" as
-a future domain concept GymApp does not yet model (no restriction
-lifecycle, no rehab-specific plan/program entity). Presenting a generic
-exercise-filter-by-restriction screen *as if* it were "your rehab plan"
-would overclaim what the product actually does tonight, so Planes shows an
-honest "Próximamente" state instead of a fabricated one.
+**Entrenamiento especial** (`special-training.mjs` + `app.js`'s
+`renderEspecial()`): the user writes "¿Qué quieres preparar o resolver?"
+and then explicitly chooses one of two modes. The mode is never inferred
+from the text.
+
+- *Crear un entrenamiento independiente*: opens the on-demand session
+  builder (time, place and modalities for that one session). Nothing is
+  persisted, and the text is not interpreted automatically yet.
+- *Adaptar mis planes actuales*: stores the objective in this browser
+  until the user removes it. Saving it regenerates nothing. It is sent as
+  labeled intent (`intencion_hoy`) only when the user generates or
+  regenerates a product listed in `productsUsingObjective()` (today:
+  Fuerza and Core, via `generate-routine`). Cardio's generator does not
+  accept a request body yet, and the UI says so.
+
+Neither mode is a diagnosis or a safety input. Persistent restrictions
+stay in Perfil.
+
+**Rehabilitación** is intentionally not a product. GymApp has no
+rehabilitation plan engine (`docs/REENGINEERING_DECISION_FRAME.md` treats
+it as a future domain concept). Until one exists, adaptation is expressed
+through Perfil restrictions and Entrenamiento especial, and the result is
+never labeled as a rehabilitation protocol.
+
+The Today Coordinator (`today-coordinator.mjs`, `buildTodayOverview`) and
+`today-intent.mjs` remain tested and bridged, but no screen uses them after
+this pass. They are kept for the future day-specific override ("hoy solo
+tengo 35 minutos"), which should adapt only that day's session, never the
+weekly plan.
 
 ## Today input fields
 

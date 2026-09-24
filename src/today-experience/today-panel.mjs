@@ -51,27 +51,37 @@ function renderChipGroup(target, options, selected, { multi }) {
 // Entry point. `screen`: 'home' shows the planning form (generic, or
 // locked to a single product's modality — see `lockedModalities`); 'active'
 // shows the in-progress session or an empty state directing the user back
-// to Inicio. `navigate(pantalla)` lets this module ask app.js to switch
-// screens (e.g. after "Empezar entrenamiento") — app.js remains the sole
-// owner of routing/state (`estado`). `lockedModalities`/`title`/`subtitle`
-// let one implementation serve both the generic "Ajustar contexto de hoy"
-// flow and a single product's own generator (e.g. Calistenia) — see
-// app.js's renderAjustar()/renderCalistenia().
+// to Entrenamiento. `navigate(pantalla)` lets this module ask app.js to
+// switch screens (e.g. after "Empezar entrenamiento") — app.js remains the
+// sole owner of routing/state (`estado`). `lockedModalities`/`title`/
+// `subtitle` let one implementation serve both the generic on-demand
+// session builder (Entrenamiento especial → entrenamiento independiente)
+// and a single product's session builder (Calistenia) — see app.js's
+// renderEspecial()/renderCalistenia(). `showDevControls` reveals the
+// demo-only restriction toggle; it is off in normal UX (app.js turns it on
+// only with ?dev=1).
 export function mount(
   container,
-  { screen = 'home', navigate = () => {}, lockedModalities = null, title = 'Hoy', subtitle = '¿Qué entrenamos hoy?' } = {},
+  {
+    screen = 'home',
+    navigate = () => {},
+    lockedModalities = null,
+    title = 'Hoy',
+    subtitle = '¿Qué entrenamos hoy?',
+    showDevControls = false,
+  } = {},
 ) {
   if (screen === 'active') {
     renderActiveScreen(container, navigate);
   } else {
-    renderHomeScreen(container, navigate, { lockedModalities, title, subtitle });
+    renderHomeScreen(container, navigate, { lockedModalities, title, subtitle, showDevControls });
   }
 }
 
 // =========================================================================
 // Home: planning form + generated plan preview
 // =========================================================================
-function renderHomeScreen(container, navigate, { lockedModalities, title, subtitle }) {
+function renderHomeScreen(container, navigate, { lockedModalities, title, subtitle, showDevControls }) {
   const uiState = defaultTodayUiState();
   if (lockedModalities) {
     uiState.modalities = [...lockedModalities];
@@ -84,8 +94,7 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
 
   function renderForm() {
     // `title: null` lets the host screen render its own header above this
-    // form (app.js's "Ajustar contexto de hoy" puts the free-text intent
-    // card first).
+    // form (app.js's Entrenamiento especial puts the user's request first).
     container.innerHTML = `
       ${title ? `<header class="g2-appbar"><h1>${title}</h1><p>${subtitle}</p></header>` : ''}
 
@@ -118,7 +127,7 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
           </div>
         </details>
 
-        <details class="g2-disclosure g2-disclosure-demo" ${demoOpen ? 'open' : ''}>
+        ${showDevControls ? `<details class="g2-disclosure g2-disclosure-demo" ${demoOpen ? 'open' : ''}>
           <summary>Modo demo / desarrollo</summary>
           <div class="toggle-fila ${uiState.demoShoulderRestriction ? 'activo' : ''}" data-toggle="demoShoulderRestriction">
             <div class="toggle-dot"></div>
@@ -127,7 +136,7 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
               <span>Simula una restricción activa (no viene de tu perfil) para ver ejercicios "con precaución".</span>
             </div>
           </div>
-        </details>
+        </details>` : ''}
 
         <p class="subtitulo g2-goal-note">Objetivo de esta vista previa: ${DEFAULT_GOAL_LABEL}.</p>
 
@@ -179,12 +188,13 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
 
     const [advancedDetails, demoDetails] = container.querySelectorAll('details.g2-disclosure');
     advancedDetails.ontoggle = () => { advancedOpen = advancedDetails.open; };
-    demoDetails.ontoggle = () => { demoOpen = demoDetails.open; };
-
-    container.querySelector('[data-toggle="demoShoulderRestriction"]').onclick = () => {
-      uiState.demoShoulderRestriction = !uiState.demoShoulderRestriction;
-      renderForm();
-    };
+    if (demoDetails) {
+      demoDetails.ontoggle = () => { demoOpen = demoDetails.open; };
+      container.querySelector('[data-toggle="demoShoulderRestriction"]').onclick = () => {
+        uiState.demoShoulderRestriction = !uiState.demoShoulderRestriction;
+        renderForm();
+      };
+    }
     container.querySelector('[data-toggle="allowConditional"]').onclick = () => {
       uiState.allowConditional = !uiState.allowConditional;
       renderForm();
@@ -286,9 +296,9 @@ function renderActiveScreen(container, navigate) {
       <div class="vacio">
         <div class="icono-grande">🏋️</div>
         <p>No tienes un entrenamiento en curso.</p>
-        <button type="button" class="boton-primario g2-cta" data-action="go-home" style="margin-top:16px">Ir a Hoy</button>
+        <button type="button" class="boton-primario g2-cta" data-action="go-home" style="margin-top:16px">Ir a Entrenamiento</button>
       </div>`;
-    container.querySelector('[data-action="go-home"]').onclick = () => navigate('inicio');
+    container.querySelector('[data-action="go-home"]').onclick = () => navigate('entrenamiento');
     return;
   }
 
@@ -321,7 +331,7 @@ function renderActiveWorkout(container, session, navigate) {
 
   container.innerHTML = `
     <div class="g2-session-header">
-      <button type="button" class="g2-icon-btn" data-action="exit" aria-label="Volver a Hoy">←</button>
+      <button type="button" class="g2-icon-btn" data-action="exit" aria-label="Volver a Entrenamiento">←</button>
       <span class="g2-progress-label">Ejercicio ${vm.currentIndex + 1} de ${vm.totalExercises}</span>
     </div>
     <div class="g2-progress-track"><div class="g2-progress-fill" style="width:${progressPct}%"></div></div>
@@ -361,7 +371,7 @@ function renderActiveWorkout(container, session, navigate) {
 
   const rerender = () => renderActiveWorkout(container, session, navigate);
 
-  container.querySelector('[data-action="exit"]').onclick = () => navigate('inicio');
+  container.querySelector('[data-action="exit"]').onclick = () => navigate('entrenamiento');
   container.querySelector('[data-action="prev"]').onclick = () => {
     setActiveSession(goToExercise(session, session.currentIndex - 1));
     rerender();
@@ -421,11 +431,11 @@ function renderSummaryScreen(container, session, navigate) {
         <div class="item"><span class="num">${vm.totalSets}</span><span class="txt">series</span></div>
         <div class="item"><span class="num">${vm.durationMinutes ?? '—'}</span><span class="txt">min</span></div>
       </div>
-      <button type="button" class="boton-primario g2-cta" data-action="done">Volver a Hoy</button>
+      <button type="button" class="boton-primario g2-cta" data-action="done">Volver a Entrenamiento</button>
     </div>`;
 
   container.querySelector('[data-action="done"]').onclick = () => {
     clearActiveSession();
-    navigate('inicio');
+    navigate('entrenamiento');
   };
 }

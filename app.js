@@ -3,7 +3,7 @@
 // =========================================================================
 const estado = {
   sesion: undefined, // undefined = cargando, null = sin sesión
-  pantalla: 'inicio', // GymApp 2.0 (GA-005): "Inicio" es el destino post-login por defecto
+  pantalla: 'perfil', // GymApp 2.0 (GA-005 UX pass): Perfil es el destino post-login por defecto
   authModo: 'login', // 'login' | 'registro' | 'reset'
   dias: null,
   rutinaId: null,
@@ -34,16 +34,12 @@ const estado = {
     semanaActual: [],
     diasDisponibles: 0,
   },
-  // Generación de rutinas (fuerza/abdomen/cardio) — GLOBAL, no local a la
-  // pantalla Generador. Antes vivía en variables de DOM capturadas dentro
-  // de invocarGeneracionFuerza/generarRutinaAbdomenDesdeGenerador/
-  // generarRutinaCardioDesdeGenerador; si el usuario navegaba a otra
-  // pantalla mientras la llamada seguía en curso, esas referencias
-  // quedaban apuntando a nodos ya destruidos por el siguiente render() y
-  // el resultado (o el error) se perdía visualmente aunque la petición
-  // siguiera viva. Ahora el estado de "generando"/"mensaje" vive aquí,
-  // así sobrevive a cualquier cambio de pantalla — ver
-  // actualizarIndicadorGeneracion() y renderGenerador().
+  // Generación de planes (fuerza/abdomen/cardio) — GLOBAL, no local a
+  // ninguna pantalla. Si el estado de "generando"/"mensaje" viviera en
+  // nodos de DOM capturados, navegar a otra pantalla mientras la llamada
+  // sigue en curso lo perdería (render() reemplaza #app). Aquí sobrevive a
+  // cualquier cambio de pantalla — ver actualizarIndicadorGeneracion() y
+  // bloqueEstadoGeneracion() en cada pantalla de producto.
   generacion: {
     fuerza: { activo: false, mensaje: null },
     abdomen: { activo: false, mensaje: null },
@@ -92,119 +88,88 @@ function h(html) {
 // =========================================================================
 // Arranque + sesión
 // =========================================================================
-// Modal editable que se muestra ANTES de generar/regenerar cualquier
-// rutina — permite ajustar metas, lesiones, condición médica y días justo
-// ahí, sin tener que ir a Perfil primero (ej. "ya se me curó el hombro").
-// tipoDias: 'gym' (fuerza/abdomen) o 'cardio' (cardio usa su propio conteo).
-async function abrirModalGeneracion({ titulo, tipoDias, onGenerar }) {
+// Confirmación antes de generar/regenerar (un plan completo o un solo
+// día). GymApp 2.0 (GA-005 UX pass): el contexto persistente — metas,
+// nivel, restricciones, equipo — se edita SOLO en Perfil; este modal solo
+// muestra qué se va a usar y, si aplica, pregunta cuántos días.
+// `pedirDias`: 'gym' | 'cardio' | null. Fuerza y Core comparten el mismo
+// campo del perfil (dias_disponibles), porque generate-routine lo lee de
+// ahí para ambos — y así se le dice al usuario. `producto` (fuerza/abdomen)
+// muestra el objetivo especial activo cuando ese generador lo recibe.
+async function abrirModalGeneracion({ titulo, descripcion, pedirDias = null, producto = null, textoConfirmar, onGenerar }) {
   const { data: { user } } = await supabase.auth.getUser();
   const { data: perfil } = await supabase.from('perfiles')
-    .select('metas, lesiones, condiciones_medicas, dias_disponibles, dias_disponibles_cardio')
+    .select('peso_kg, edad, metas, lesiones, condiciones_medicas, dias_disponibles, dias_disponibles_cardio')
     .eq('id', user.id).maybeSingle();
 
-  if (!perfil) {
-    alert('No encuentro tu perfil guardado — ve a la pestaña Perfil y dale "Guardar perfil" primero (necesita al menos tu peso y edad).');
+  if (!perfil || !perfil.peso_kg || !perfil.edad) {
+    alert('Primero completa y guarda tu Perfil (al menos peso y edad): GymApp lo usa para adaptar tus planes.');
+    irAPantalla('perfil');
     return;
   }
 
-  const estadoModal = {
-    metas: [...(perfil.metas || [])],
-    lesiones: [...(perfil.lesiones || [])],
-    dias: tipoDias === 'cardio' ? (perfil.dias_disponibles_cardio || 3) : (perfil.dias_disponibles || 4),
-  };
+  let dias = pedirDias === 'cardio' ? (perfil.dias_disponibles_cardio || 3) : (perfil.dias_disponibles || 4);
+  const maxDias = pedirDias === 'cardio' ? 7 : 6;
+  const objetivo = producto ? leerObjetivoEspecialParaProducto(producto) : '';
+  const restricciones = [...(perfil.lesiones || []), ...(perfil.condiciones_medicas ? ['condición médica registrada'] : [])];
 
   const fondo = h(`
     <div class="modal-fondo">
       <div class="modal-caja">
         <h2 class="titulo" style="font-size:18px">${titulo}</h2>
-        <p class="subtitulo">Ajusta lo que haga falta antes de generar — ej. si ya te recuperaste de una lesión, quítala aquí mismo.</p>
-        <label class="etiqueta">Metas (hasta ${MAX_METAS})</label>
-        <div class="chip-grid" id="modal-metas"></div>
-        <label class="etiqueta">Lesiones o limitaciones</label>
-        <div class="chip-grid" id="modal-lesiones"></div>
-        <label class="etiqueta">Condición médica específica (opcional)</label>
-        <textarea class="input-modal" id="modal-condiciones">${perfil.condiciones_medicas || ''}</textarea>
-        <label class="etiqueta" style="margin-top:12px">Días ${tipoDias === 'cardio' ? 'de cardio' : 'de gym'} por semana: <span id="modal-dias-num">${estadoModal.dias}</span></label>
-        <div class="chip-grid" id="modal-dias"></div>
+        ${descripcion ? `<p class="subtitulo">${descripcion}</p>` : ''}
+        ${pedirDias ? `
+          <label class="etiqueta">${pedirDias === 'cardio' ? 'Días de cardio por semana' : 'Días de gym por semana'}: <span id="modal-dias-num">${dias}</span></label>
+          <div class="chip-grid" id="modal-dias"></div>
+          ${pedirDias === 'gym' ? '<p class="subtitulo g2-nota">Fuerza y Core comparten este número de días.</p>' : ''}` : ''}
+        <div class="g2-contexto-usado">
+          <label class="etiqueta">Se usará tu perfil</label>
+          <p class="subtitulo">Metas: ${escaparHtml((perfil.metas || []).join(', ') || '—')}</p>
+          <p class="subtitulo">Restricciones: ${escaparHtml(restricciones.join(', ') || 'ninguna')}</p>
+          ${objetivo ? `<p class="subtitulo">Objetivo especial: “${escaparHtml(objetivo)}”</p>` : ''}
+          <button type="button" class="g2-link-btn" id="modal-ir-perfil">Editar en Perfil</button>
+        </div>
         <div id="modal-mensaje"></div>
         <div class="modal-botones">
-          <button class="boton-secundario-caja" id="modal-cancelar">Cancelar</button>
-          <button class="boton-primario" id="modal-confirmar">Guardar y generar</button>
+          <button type="button" class="boton-secundario-caja" id="modal-cancelar">Cancelar</button>
+          <button type="button" class="boton-primario" id="modal-confirmar">${textoConfirmar}</button>
         </div>
       </div>
     </div>`);
   document.body.appendChild(fondo);
 
-  const metasDiv = document.getElementById('modal-metas');
-  function pintarMetasModal() {
-    metasDiv.innerHTML = METAS.map((m) => {
-      const sel = estadoModal.metas.includes(m);
-      const deshab = !sel && estadoModal.metas.length >= MAX_METAS;
-      return `<button class="chip ${sel ? 'activo' : ''}" data-mm="${m}" ${deshab ? 'disabled' : ''}>${m}</button>`;
-    }).join('');
-    metasDiv.querySelectorAll('[data-mm]').forEach((btn) => {
-      btn.onclick = () => {
-        const m = btn.dataset.mm;
-        if (estadoModal.metas.includes(m)) estadoModal.metas = estadoModal.metas.filter((x) => x !== m);
-        else if (estadoModal.metas.length < MAX_METAS) estadoModal.metas = [...estadoModal.metas, m];
-        pintarMetasModal();
-      };
-    });
+  if (pedirDias) {
+    const diasDiv = document.getElementById('modal-dias');
+    const pintarDias = () => {
+      diasDiv.innerHTML = Array.from({ length: maxDias }, (_, i) => i + 1)
+        .map((d) => `<button type="button" class="chip ${dias === d ? 'activo' : ''}" data-md="${d}">${d}</button>`).join('');
+      document.getElementById('modal-dias-num').textContent = dias;
+      diasDiv.querySelectorAll('[data-md]').forEach((btn) => {
+        btn.onclick = () => { dias = Number(btn.dataset.md); pintarDias(); };
+      });
+    };
+    pintarDias();
   }
-  pintarMetasModal();
-
-  const lesionesDiv = document.getElementById('modal-lesiones');
-  function pintarLesionesModal() {
-    lesionesDiv.innerHTML = LESIONES_COMUNES.map((l) => {
-      const sel = estadoModal.lesiones.includes(l);
-      return `<button class="chip ${sel ? 'activo' : ''}" data-ml="${l}">${l}${sel ? ' ✕' : ''}</button>`;
-    }).join('');
-    lesionesDiv.querySelectorAll('[data-ml]').forEach((btn) => {
-      btn.onclick = () => {
-        const l = btn.dataset.ml;
-        estadoModal.lesiones = estadoModal.lesiones.includes(l)
-          ? estadoModal.lesiones.filter((x) => x !== l)
-          : [...estadoModal.lesiones, l];
-        pintarLesionesModal();
-      };
-    });
-  }
-  pintarLesionesModal();
-
-  const diasDiv = document.getElementById('modal-dias');
-  const opcionesDias = tipoDias === 'cardio' ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5, 6];
-  function pintarDiasModal() {
-    diasDiv.innerHTML = opcionesDias.map((d) =>
-      `<button class="chip ${estadoModal.dias === d ? 'activo' : ''}" data-md="${d}">${d}</button>`,
-    ).join('');
-    document.getElementById('modal-dias-num').textContent = estadoModal.dias;
-    diasDiv.querySelectorAll('[data-md]').forEach((btn) => {
-      btn.onclick = () => { estadoModal.dias = Number(btn.dataset.md); pintarDiasModal(); };
-    });
-  }
-  pintarDiasModal();
 
   document.getElementById('modal-cancelar').onclick = () => fondo.remove();
+  document.getElementById('modal-ir-perfil').onclick = () => { fondo.remove(); irAPantalla('perfil'); };
 
   document.getElementById('modal-confirmar').onclick = async () => {
     const btn = document.getElementById('modal-confirmar');
-    const mensajeDiv = document.getElementById('modal-mensaje');
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div>';
-
-    const condicionesMedicas = document.getElementById('modal-condiciones').value.trim();
-    const cambios = { condiciones_medicas: condicionesMedicas || null, metas: estadoModal.metas, lesiones: estadoModal.lesiones };
-    if (tipoDias === 'cardio') cambios.dias_disponibles_cardio = estadoModal.dias;
-    else cambios.dias_disponibles = estadoModal.dias;
-
-    const { error } = await supabase.from('perfiles').update(cambios).eq('id', user.id);
-    if (error) {
-      mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo guardar: ${error.message}</div>`;
-      btn.disabled = false;
-      btn.textContent = 'Guardar y generar';
-      return;
+    if (pedirDias) {
+      const cambios = pedirDias === 'cardio' ? { dias_disponibles_cardio: dias } : { dias_disponibles: dias };
+      const { error } = await supabase.from('perfiles').update(cambios).eq('id', user.id);
+      if (error) {
+        document.getElementById('modal-mensaje').innerHTML = `<div class="mensaje error">No se pudo guardar: ${escaparHtml(error.message)}</div>`;
+        btn.disabled = false;
+        btn.textContent = textoConfirmar;
+        return;
+      }
+      if (pedirDias === 'cardio') perfilForm.diasCardio = dias;
+      else perfilForm.dias = dias;
     }
-
     fondo.remove();
     onGenerar();
   };
@@ -244,155 +209,62 @@ function render() {
     return;
   }
 
-  if (estado.pantalla === 'onboarding') renderOnboarding();
-  else if (estado.pantalla === 'generador') renderGenerador();
-  else if (estado.pantalla === 'inicio') renderInicio();
-  else if (estado.pantalla === 'ajustar') renderAjustar();
-  else if (estado.pantalla === 'planes') renderPlanes();
-  else if (estado.pantalla === 'calistenia') renderCalistenia();
-  else if (estado.pantalla === 'rehabilitacion') renderRehabilitacion();
-  else if (estado.pantalla === 'entrenar') renderEntrenar();
-  else if (estado.pantalla === 'mas') renderMas();
+  if (estado.pantalla === 'perfil' || estado.pantalla === 'onboarding') renderPerfil();
+  else if (estado.pantalla === 'entrenamiento') renderEntrenamiento();
   else if (estado.pantalla === 'rutina') renderRutina();
-  else if (estado.pantalla === 'abdomen') renderAbdomen();
   else if (estado.pantalla === 'cardio') renderCardio();
+  else if (estado.pantalla === 'abdomen') renderAbdomen();
+  else if (estado.pantalla === 'calistenia') renderCalistenia();
+  else if (estado.pantalla === 'especial') renderEspecial();
+  else if (estado.pantalla === 'entrenar') renderEntrenar();
   else if (estado.pantalla === 'registro') renderRegistro();
   else if (estado.pantalla === 'historial') renderHistorial();
   else if (estado.pantalla === 'extra') renderExtra();
+  else {
+    estado.pantalla = 'perfil';
+    renderPerfil();
+  }
 
   renderNav();
   actualizarIndicadorGeneracion();
 }
 
-// GymApp 2.0 primary nav (GA-005 product-model pass): Inicio / Planes /
-// Historial / Perfil — 4 destinations matching the mental model "what do
-// I do today / what programs am I following / what have I done / what
-// does GymApp know about me". The five training products (Fuerza, Cardio,
-// Core, Calistenia, Rehabilitación) live INSIDE Planes, not as their own
-// nav tabs — see renderPlanes(). Nothing about the underlying legacy
-// screens changed; only how they're reached.
+// GymApp 2.0 (GA-005 UX pass): exactly THREE global destinations, one
+// obvious place per action —
+// - Perfil: what GymApp knows about you (edited only here).
+// - Entrenamiento: every training product; view / create / regenerate.
+// - Historial: what you already did (and logging extra activity).
+// Every sub-screen belongs to exactly one of them (nav highlight).
+const SECCION_POR_PANTALLA = {
+  perfil: 'perfil',
+  onboarding: 'perfil',
+  entrenamiento: 'entrenamiento',
+  rutina: 'entrenamiento',
+  cardio: 'entrenamiento',
+  abdomen: 'entrenamiento',
+  calistenia: 'entrenamiento',
+  especial: 'entrenamiento',
+  entrenar: 'entrenamiento',
+  registro: 'entrenamiento',
+  historial: 'historial',
+  extra: 'historial',
+};
+
 function irAPantalla(destino) {
   estado.pantalla = destino;
   render();
 }
 
 function renderNav() {
-  const enInicio = ['inicio', 'ajustar', 'entrenar'].includes(estado.pantalla);
-  const enPlanes = ['planes', 'rutina', 'abdomen', 'cardio', 'generador', 'calistenia', 'rehabilitacion', 'mas', 'extra'].includes(estado.pantalla);
+  const seccion = SECCION_POR_PANTALLA[estado.pantalla] || 'perfil';
   navContainer.innerHTML = `
     <div class="nav-inferior">
-      <button class="nav-item ${enInicio ? 'activo' : ''}" data-nav="inicio"><span class="icono">🏠</span>Inicio</button>
-      <button class="nav-item ${enPlanes ? 'activo' : ''}" data-nav="planes"><span class="icono">📚</span>Planes</button>
-      <button class="nav-item ${estado.pantalla === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
-      <button class="nav-item ${estado.pantalla === 'onboarding' ? 'activo' : ''}" data-nav="onboarding"><span class="icono">👤</span>Perfil</button>
+      <button class="nav-item ${seccion === 'perfil' ? 'activo' : ''}" data-nav="perfil"><span class="icono">👤</span>Perfil</button>
+      <button class="nav-item ${seccion === 'entrenamiento' ? 'activo' : ''}" data-nav="entrenamiento"><span class="icono">🏋️</span>Entrenamiento</button>
+      <button class="nav-item ${seccion === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
     </div>`;
   navContainer.querySelectorAll('[data-nav]').forEach((btn) => {
     btn.onclick = () => irAPantalla(btn.dataset.nav);
-  });
-}
-
-// =========================================================================
-// Inicio — GymApp 2.0 (GA-005 product-model pass). Answers "¿qué entreno
-// hoy?" by aggregating whatever each product already has scheduled
-// (today's Fuerza/Cardio/Core day, via the existing legacy state already
-// loaded by cargarRutina/cargarRutinaAbdomen/cargarRutinaCardio) through
-// the Today Coordinator (src/today-experience/today-coordinator.mjs) —
-// this function does not decide anything about exercises itself, it only
-// reads already-generated data and hands it to the coordinator/bridge.
-// Calistenia/Rehabilitación are not included in "today" here (they have
-// no daily-rotation data model yet — see src/today-experience/README.md);
-// they're reachable from Planes.
-// =========================================================================
-function renderInicio() {
-  if (!window.GymAppTodayExperience) {
-    app.innerHTML = '<div class="mensaje error">No se pudo cargar Inicio (módulo no disponible). Revisa la consola.</div>';
-    return;
-  }
-  const bridge = window.GymAppTodayExperience;
-
-  const componentes = {
-    fuerza: estado.dias && estado.dias.length > 0
-      ? { label: 'Fuerza', items: bridge.adaptFuerzaDay(estado.dias[estado.diaActivo]) }
-      : null,
-    cardio: estado.cardio.dias && estado.cardio.dias.length > 0
-      ? { label: 'Cardio', items: bridge.adaptCardioDay(estado.cardio.dias[estado.cardio.diaActivo]) }
-      : null,
-    core: estado.abdomen.dias && estado.abdomen.dias.length > 0
-      ? { label: 'Core', items: bridge.adaptAbdomenDay(estado.abdomen.dias[estado.abdomen.diaActivo]) }
-      : null,
-  };
-  const overview = bridge.buildTodayOverview(componentes);
-  const destinoPorProducto = { fuerza: 'rutina', cardio: 'cardio', core: 'abdomen' };
-
-  const tarjetasHtml = overview.components.map((c) => `
-    <div class="g2-today-item">
-      <div class="g2-today-item-info">
-        <div class="g2-today-item-label">${c.label}</div>
-        <div class="g2-today-item-meta">${c.itemCount} ejercicio(s) · ~${c.estimatedDurationMinutes} min</div>
-      </div>
-      <button type="button" class="g2-btn-secondary" data-ver="${c.product}">Ver</button>
-    </div>`).join('');
-
-  // Contexto de hoy (texto libre guardado en Ajustar) + el resultado de
-  // cualquier generación de Fuerza/Core lanzada desde ahí, para que el
-  // usuario vea aquí mismo si se aplicó o falló — sin ir al Generador.
-  const intencionHoy = leerIntencionHoy();
-  const mensajesGeneracion = ['fuerza', 'abdomen']
-    .filter((t) => estado.generacion[t].mensaje)
-    .map((t) => `<div class="mensaje ${estado.generacion[t].mensaje.tipo}">
-        <strong>${ETIQUETAS_GENERACION[t]}:</strong> ${escaparHtml(estado.generacion[t].mensaje.texto)}
-        <button type="button" class="g2-link-btn" data-descartar="${t}">Ocultar</button>
-      </div>`).join('');
-  const contextoHtml = intencionHoy || mensajesGeneracion ? `
-    <section class="g2-card">
-      ${intencionHoy ? `<label class="etiqueta">Contexto de hoy</label>
-        <p class="g2-contexto-texto">“${escaparHtml(intencionHoy)}”</p>
-        <button type="button" class="g2-link-btn" id="btn-editar-contexto">Editar</button>` : ''}
-      ${mensajesGeneracion}
-    </section>` : '';
-
-  app.innerHTML = '';
-  app.appendChild(h(`
-    <div>
-      <header class="g2-appbar"><h1>Inicio</h1><p>¿Qué entrenamos hoy?</p></header>
-      ${contextoHtml}
-      ${overview.hasAnything ? `
-        <section class="g2-card">
-          <label class="etiqueta">Hoy</label>
-          ${tarjetasHtml}
-          <p class="subtitulo" style="margin-top:10px">Total estimado: ~${overview.totalEstimatedDurationMinutes} min</p>
-          <button type="button" class="boton-primario g2-cta" id="btn-empezar-combinado">Empezar entrenamiento</button>
-        </section>` : `
-        <div class="vacio">
-          <div class="icono-grande">📅</div>
-          <p>Aún no tienes planes activos para hoy.</p>
-        </div>
-        <button type="button" class="boton-primario g2-cta" id="btn-ir-planes">Ir a Planes</button>`}
-      <button type="button" class="boton-secundario" id="btn-ajustar-contexto" style="text-align:left;padding-left:0;margin-top:14px">🎛️ Ajustar contexto de hoy</button>
-      <button type="button" class="boton-secundario" id="btn-ver-planes" style="text-align:left;padding-left:0">📚 Ver todos mis planes</button>
-    </div>`));
-
-  app.querySelectorAll('[data-ver]').forEach((btn) => {
-    btn.onclick = () => irAPantalla(destinoPorProducto[btn.dataset.ver]);
-  });
-  const btnCombinado = document.getElementById('btn-empezar-combinado');
-  if (btnCombinado) {
-    btnCombinado.onclick = () => {
-      bridge.startSessionFromItems(overview.combinedItems, 'today-combined');
-      irAPantalla('entrenar');
-    };
-  }
-  const btnIrPlanes = document.getElementById('btn-ir-planes');
-  if (btnIrPlanes) btnIrPlanes.onclick = () => irAPantalla('planes');
-  document.getElementById('btn-ajustar-contexto').onclick = () => irAPantalla('ajustar');
-  document.getElementById('btn-ver-planes').onclick = () => irAPantalla('planes');
-  const btnEditarContexto = document.getElementById('btn-editar-contexto');
-  if (btnEditarContexto) btnEditarContexto.onclick = () => irAPantalla('ajustar');
-  app.querySelectorAll('[data-descartar]').forEach((btn) => {
-    btn.onclick = () => {
-      estado.generacion[btn.dataset.descartar].mensaje = null;
-      renderInicio();
-    };
   });
 }
 
@@ -400,320 +272,391 @@ function escaparHtml(texto) {
   return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function leerIntencionHoy() {
-  return window.GymAppTodayExperience?.readTodayIntent?.() || '';
+function puenteEntrenamiento() {
+  return window.GymAppTodayExperience || null;
 }
 
-// Ajustar contexto de hoy (GA-005 fluid-context pass). One place where the
-// user can (1) say in their own words what changed / what they need today,
-// (2) see — and if needed edit — the restrictions GymApp already has saved
-// in their profile, and (3) still use the fast session controls below.
-//
-// The free-text note is USER INTENT, not a restriction or diagnosis: it is
-// stored per-day in this browser (src/today-experience/today-intent.mjs),
-// shown on Inicio, and forwarded length-bounded to generate-routine as
-// labeled intent. Nothing in code parses it into filters/contraindications.
-// Structured restrictions (perfiles.lesiones/condiciones_medicas) stay a
-// separate, explicit edit.
-function renderAjustar() {
-  const maxIntencion = window.GymAppTodayExperience?.TODAY_INTENT_MAX_LENGTH || 500;
+// Objetivo especial "adaptar mis planes" (ver renderEspecial). Solo se
+// envía a los productos cuyo generador lo acepta hoy (Fuerza y Core, vía
+// generate-routine) — la lista vive en src/today-experience/special-training.mjs.
+function leerObjetivoEspecial() {
+  return puenteEntrenamiento()?.readAdaptObjective?.() || null;
+}
+
+function leerObjetivoEspecialParaProducto(producto) {
+  const puente = puenteEntrenamiento();
+  return puente ? puente.objectiveTextForProduct(producto, puente.readAdaptObjective()) : '';
+}
+
+// Controles de demo/desarrollo del armador de sesiones: ocultos en la UX
+// normal; visibles solo con ?dev=1 en la URL.
+function controlesDevActivos() {
+  try {
+    return new URLSearchParams(window.location.search).get('dev') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+// Cabecera común de toda pantalla de producto: siempre regresa al hub.
+function encabezadoProducto(titulo, subtitulo) {
+  return `
+    <button type="button" class="g2-back" data-volver-entrenamiento>‹ Entrenamiento</button>
+    <header class="g2-appbar"><h1>${titulo}</h1>${subtitulo ? `<p>${subtitulo}</p>` : ''}</header>`;
+}
+
+function conectarVolverEntrenamiento() {
+  app.querySelectorAll('[data-volver-entrenamiento]').forEach((btn) => {
+    btn.onclick = () => irAPantalla('entrenamiento');
+  });
+}
+
+// =========================================================================
+// Planes con generación (Fuerza, Core, Cardio) — gramática común.
+// Crear / regenerar / cambiar días pasan TODOS por abrirGeneracionPlan()
+// -> abrirModalGeneracion() -> invocarGeneracion(): un solo camino por
+// acción, sin importar desde dónde se pida (hub, pantalla del producto,
+// Entrenamiento especial).
+// =========================================================================
+const PLANES = {
+  fuerza: {
+    nombre: 'Fuerza / Gimnasio',
+    nombreCorto: 'Fuerza',
+    icono: '💪',
+    pantalla: 'rutina',
+    funcion: 'generate-routine',
+    body: undefined,
+    pedirDias: 'gym',
+    dias: () => estado.dias,
+    cargando: () => estado.cargandoRutina,
+  },
+  cardio: {
+    nombre: 'Cardio',
+    nombreCorto: 'Cardio',
+    icono: '🏃',
+    pantalla: 'cardio',
+    funcion: 'generate-cardio-plan',
+    body: undefined,
+    pedirDias: 'cardio',
+    dias: () => estado.cardio.dias,
+    cargando: () => estado.cardio.cargando,
+  },
+  abdomen: {
+    nombre: 'Core / Abdomen',
+    nombreCorto: 'Core',
+    icono: '🔥',
+    pantalla: 'abdomen',
+    funcion: 'generate-routine',
+    body: { tipo: 'abdominales' },
+    pedirDias: 'gym',
+    dias: () => estado.abdomen.dias,
+    cargando: () => estado.abdomen.cargando,
+  },
+};
+
+function planActivo(tipo) {
+  const dias = PLANES[tipo].dias();
+  return Boolean(dias && dias.length > 0);
+}
+
+// `modo`: 'crear' | 'regenerar'. Regenerar también es donde se cambian
+// los días: un plan semanal ya generado no se puede "estirar" a otro
+// número de días sin generarlo de nuevo.
+function abrirGeneracionPlan(tipo, modo) {
+  const plan = PLANES[tipo];
+  const crear = modo === 'crear';
+  abrirModalGeneracion({
+    titulo: crear ? `Crear plan de ${plan.nombreCorto}` : `Regenerar plan de ${plan.nombreCorto}`,
+    descripcion: crear
+      ? '¿Cuántos días por semana quieres entrenar?'
+      : 'Se genera un plan nuevo que reemplaza al activo. Tu historial se conserva.',
+    pedirDias: plan.pedirDias,
+    producto: tipo,
+    textoConfirmar: crear ? 'Crear plan' : 'Generar plan nuevo',
+    onGenerar: () => invocarGeneracion(tipo, plan.funcion, plan.body),
+  });
+}
+
+// Estado de generación + objetivo especial, dentro de la pantalla del
+// producto (no en una pantalla aparte).
+function bloqueEstadoGeneracion(tipo) {
+  const gen = estado.generacion[tipo];
+  const objetivo = leerObjetivoEspecialParaProducto(tipo);
+  return `
+    ${gen.activo ? '<div class="mensaje info">Generando plan nuevo… puedes seguir usando la app.</div>' : ''}
+    ${!gen.activo && gen.mensaje ? `<div class="mensaje ${gen.mensaje.tipo}">${escaparHtml(gen.mensaje.texto)}</div>` : ''}
+    ${objetivo ? `<p class="subtitulo g2-nota">Objetivo especial activo: “${escaparHtml(objetivo)}”. Se usa al regenerar este plan.</p>` : ''}`;
+}
+
+function botonCrearPlanHtml(tipo) {
+  const activo = estado.generacion[tipo].activo;
+  return `<button type="button" class="boton-primario g2-cta" data-plan-accion="crear" ${activo ? 'disabled' : ''}>${activo ? 'Generando…' : 'Crear plan'}</button>`;
+}
+
+// Acciones secundarias del plan, detrás de "Ajustar plan" (progresivo).
+function bloqueAjustesPlan(tipo, { idRegenerarDia, idMensajeDia }) {
+  const activo = estado.generacion[tipo].activo;
+  return `
+    <details class="g2-disclosure g2-ajustes-plan">
+      <summary>Ajustar plan</summary>
+      <button type="button" class="boton-secundario" data-plan-accion="regenerar" ${activo ? 'disabled' : ''}>🔁 Regenerar plan o cambiar días</button>
+      <button type="button" class="boton-secundario" id="${idRegenerarDia}">🔄 Regenerar solo este día con IA</button>
+      <div id="${idMensajeDia}"></div>
+    </details>`;
+}
+
+function conectarAccionesPlan(tipo) {
+  app.querySelectorAll('[data-plan-accion]').forEach((btn) => {
+    btn.onclick = () => abrirGeneracionPlan(tipo, btn.dataset.planAccion);
+  });
+  conectarVolverEntrenamiento();
+}
+
+// =========================================================================
+// Entrenamiento — el hub de TODOS los productos de entrenamiento. Cada
+// tarjeta tiene UNA acción principal: "Ver plan" si hay plan activo,
+// "Crear plan" si no (abre directamente la creación). No hay otro lugar
+// de la app que genere planes semanales.
+// =========================================================================
+function renderEntrenamiento() {
+  const puente = puenteEntrenamiento();
+  const objetivo = leerObjetivoEspecial();
+  const enCurso = puente?.hasActiveSession?.();
+
+  const tarjetasPlanes = Object.entries(PLANES).map(([tipo, plan]) => {
+    const activo = planActivo(tipo);
+    const generando = estado.generacion[tipo].activo;
+    let estadoTxt = 'Sin plan activo';
+    if (generando) estadoTxt = 'Generando plan…';
+    else if (!activo && plan.cargando()) estadoTxt = 'Cargando…';
+    else if (activo) {
+      estadoTxt = `Plan activo · ${plan.dias().length} día(s) por semana`;
+      if (tipo === 'fuerza' && perfilForm.metas?.[0]) estadoTxt += ` · ${escaparHtml(perfilForm.metas[0])}`;
+    }
+    return `
+      <div class="g2-product-card">
+        <div class="g2-product-info">
+          <div class="g2-product-name">${plan.icono} ${plan.nombre}</div>
+          <div class="g2-product-status">${estadoTxt}</div>
+        </div>
+        <button type="button" class="g2-btn-secondary" data-producto="${tipo}" data-activo="${activo ? '1' : ''}" ${!activo && generando ? 'disabled' : ''}>${activo ? 'Ver plan' : 'Crear plan'}</button>
+      </div>`;
+  }).join('');
+
   app.innerHTML = '';
   app.appendChild(h(`
     <div>
-      <header class="g2-appbar"><h1>Ajustar contexto de hoy</h1><p>Cuéntale a GymApp qué cambió o qué necesitas.</p></header>
-
-      <section class="g2-card">
-        <label class="etiqueta" for="ajustar-intencion">¿Qué necesitas hoy?</label>
-        <textarea class="input-modal g2-intent-input" id="ajustar-intencion" rows="4" maxlength="${maxIntencion}"
-          placeholder="Ej.: Me duele el hombro y quiero evitar cargarlo. Tengo solo 25 minutos. Hoy quiero pierna y cardio.">${escaparHtml(leerIntencionHoy())}</textarea>
-        <p class="subtitulo g2-intent-nota">Se usa como contexto al generar tus planes de Fuerza y Core hoy. No es un diagnóstico y no reemplaza las restricciones guardadas en tu perfil.</p>
-        <div id="ajustar-mensaje"></div>
-        <button type="button" class="boton-primario g2-cta" id="ajustar-guardar">Guardar y volver a Inicio</button>
-        <label class="etiqueta">Aplicar ahora (genera un plan nuevo que reemplaza al activo)</label>
-        <div class="g2-intent-acciones">
-          <button type="button" class="g2-btn-secondary" data-aplicar="fuerza">Generar Fuerza</button>
-          <button type="button" class="g2-btn-secondary" data-aplicar="abdomen">Generar Core</button>
+      <header class="g2-appbar"><h1>Entrenamiento</h1><p>Tus planes y sesiones</p></header>
+      ${enCurso ? `
+        <div class="mensaje info g2-resume-banner">
+          Tienes una sesión en curso.
+          <button type="button" class="g2-link-btn" id="btn-continuar-sesion">Continuar →</button>
+        </div>` : ''}
+      ${tarjetasPlanes}
+      <div class="g2-product-card">
+        <div class="g2-product-info">
+          <div class="g2-product-name">🤸 Calistenia</div>
+          <div class="g2-product-status">Sesión bajo demanda (aún no se guarda como plan)</div>
         </div>
-      </section>
-
-      <section class="g2-card" id="ajustar-perfil">
-        <label class="etiqueta">Lo que GymApp ya sabe de ti</label>
-        <p class="subtitulo">Cargando tu perfil…</p>
-      </section>
-
-      <label class="etiqueta" style="margin-top:18px">Sesión rápida con controles</label>
-      <div id="today-root"></div>
+        <button type="button" class="g2-btn-secondary" id="btn-calistenia">Crear sesión</button>
+      </div>
+      <div class="g2-product-card">
+        <div class="g2-product-info">
+          <div class="g2-product-name">✨ Entrenamiento especial</div>
+          <div class="g2-product-status">${objetivo ? `Objetivo activo: “${escaparHtml(objetivo.text)}”` : 'Algo temporal o fuera de lo normal'}</div>
+        </div>
+        <button type="button" class="g2-btn-secondary" id="btn-especial">Abrir</button>
+      </div>
     </div>`));
 
-  const textarea = document.getElementById('ajustar-intencion');
-  const guardarIntencion = () => window.GymAppTodayExperience?.saveTodayIntent?.(textarea.value) ?? '';
+  app.querySelectorAll('[data-producto]').forEach((btn) => {
+    btn.onclick = () => {
+      const tipo = btn.dataset.producto;
+      if (btn.dataset.activo) irAPantalla(PLANES[tipo].pantalla);
+      else abrirGeneracionPlan(tipo, 'crear');
+    };
+  });
+  const continuar = document.getElementById('btn-continuar-sesion');
+  if (continuar) continuar.onclick = () => irAPantalla('entrenar');
+  document.getElementById('btn-calistenia').onclick = () => irAPantalla('calistenia');
+  document.getElementById('btn-especial').onclick = () => {
+    // Entrar desde el hub empieza limpio (sin el aviso/sesión de la visita
+    // anterior); el texto a medio escribir sí se conserva.
+    especialUi.aplicado = null;
+    especialUi.mensaje = null;
+    irAPantalla('especial');
+  };
+}
 
-  document.getElementById('ajustar-guardar').onclick = () => {
-    guardarIntencion();
-    irAPantalla('inicio');
+// Calistenia: todavía NO hay un plan semanal persistido para este
+// producto; lo honesto es presentarlo como sesión bajo demanda (pipeline
+// Context Engine -> Compatibility Engine -> Workout Planner, bloqueado a
+// la modalidad calistenia). Cuando exista un plan, esta pantalla puede
+// ganar "Ver plan" sin cambiar la navegación global.
+function renderCalistenia() {
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      ${encabezadoProducto('Calistenia', 'Sesión bajo demanda')}
+      <p class="subtitulo g2-nota">Por ahora Calistenia arma una sesión para hoy; todavía no guarda un plan semanal.</p>
+      <div id="today-root"></div>
+    </div>`));
+  conectarVolverEntrenamiento();
+  montarArmadorSesion(document.getElementById('today-root'), { lockedModalities: ['calisthenics'] });
+}
+
+// =========================================================================
+// Entrenamiento especial — una necesidad temporal o fuera de lo normal,
+// en palabras del usuario. Dos intenciones explícitas (nunca inferidas del
+// texto): entrenamiento independiente (una sesión puntual) o adaptar los
+// planes actuales (objetivo que persiste hasta que el usuario lo quita).
+// El texto NO es diagnóstico ni restricción: nunca se convierte en
+// filtros; como mucho se envía, etiquetado, al generador de Fuerza/Core.
+// =========================================================================
+const especialUi = { texto: '', modo: null, aplicado: null, mensaje: null };
+
+function renderEspecial() {
+  const puente = puenteEntrenamiento();
+  if (!puente) {
+    app.innerHTML = '<div class="mensaje error">No se pudo cargar el módulo de entrenamiento. Revisa la consola.</div>';
+    return;
+  }
+  const MODOS = puente.SPECIAL_TRAINING_MODES;
+  const objetivo = puente.readAdaptObjective();
+  const productosConObjetivo = puente.productsUsingObjective().map((t) => PLANES[t].nombreCorto);
+  const maximo = puente.TODAY_INTENT_MAX_LENGTH;
+
+  const opcion = (modo, titulo, texto) => `
+    <button type="button" class="g2-opcion ${especialUi.modo === modo ? 'activo' : ''}" data-modo="${modo}">
+      <strong>${titulo}</strong><span>${texto}</span>
+    </button>`;
+
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      ${encabezadoProducto('Entrenamiento especial', 'Algo temporal o fuera de lo normal')}
+
+      ${objetivo ? `
+        <section class="g2-card">
+          <label class="etiqueta">Objetivo activo para tus planes</label>
+          <p class="g2-contexto-texto">“${escaparHtml(objetivo.text)}”</p>
+          ${especialUi.mensaje ? `<div class="mensaje info">${especialUi.mensaje}</div>` : ''}
+          <p class="subtitulo g2-nota">Se aplica cuando generas o regeneras: ${productosConObjetivo.join(' y ')}. Cardio y Calistenia todavía no lo usan. No cambia tus planes por sí solo.</p>
+          <div class="g2-intent-acciones">
+            ${puente.productsUsingObjective().map((t) => `<button type="button" class="g2-btn-secondary" data-aplicar="${t}" ${estado.generacion[t].activo ? 'disabled' : ''}>${planActivo(t) ? 'Regenerar' : 'Crear'} ${PLANES[t].nombreCorto}</button>`).join('')}
+          </div>
+          <button type="button" class="g2-link-btn" id="btn-quitar-objetivo">Quitar objetivo</button>
+        </section>` : ''}
+
+      <section class="g2-card">
+        <label class="etiqueta" for="especial-texto">¿Qué quieres preparar o resolver?</label>
+        <textarea class="input-modal g2-intent-input" id="especial-texto" rows="4" maxlength="${maximo}"
+          placeholder="Ej.: Hoy no fui al gimnasio y quiero hacer calistenia en casa. En 30 días voy a un concierto y quiero mejorar mi condición.">${escaparHtml(especialUi.texto)}</textarea>
+        <p class="subtitulo g2-intent-nota">Es contexto para tu entrenamiento, no un diagnóstico. Tus lesiones y condiciones se editan en Perfil.</p>
+
+        <label class="etiqueta">¿Cómo quieres aplicar este objetivo?</label>
+        <div class="g2-opciones">
+          ${opcion(MODOS.INDEPENDENT, 'Crear un entrenamiento independiente', 'Para algo puntual: hoy no fui al gym, entreno en casa, estoy de viaje.')}
+          ${opcion(MODOS.ADAPT_PLANS, 'Adaptar mis planes actuales', 'Para algo temporal que debe influir en tus planes: un evento en 30 días.')}
+        </div>
+        <button type="button" class="boton-primario g2-cta" id="especial-continuar">Continuar</button>
+        <div id="especial-mensaje"></div>
+      </section>
+
+      ${especialUi.aplicado === MODOS.INDEPENDENT ? `
+        <section>
+          <label class="etiqueta">Tu sesión independiente</label>
+          <p class="subtitulo g2-nota">Elige tiempo, lugar y modalidades para esta sesión. Tu texto queda como referencia: todavía no se interpreta automáticamente.</p>
+          <div id="today-root"></div>
+        </section>` : ''}
+    </div>`));
+
+  conectarVolverEntrenamiento();
+  const textarea = document.getElementById('especial-texto');
+  textarea.oninput = () => { especialUi.texto = textarea.value; };
+
+  app.querySelectorAll('[data-modo]').forEach((btn) => {
+    btn.onclick = () => {
+      especialUi.texto = textarea.value;
+      especialUi.modo = btn.dataset.modo;
+      renderEspecial();
+    };
+  });
+
+  document.getElementById('especial-continuar').onclick = () => {
+    especialUi.texto = textarea.value;
+    const mensajeDiv = document.getElementById('especial-mensaje');
+    if (!especialUi.texto.trim()) {
+      mensajeDiv.innerHTML = '<div class="mensaje error">Escribe qué quieres preparar o resolver.</div>';
+      return;
+    }
+    if (!especialUi.modo) {
+      mensajeDiv.innerHTML = '<div class="mensaje error">Elige cómo quieres aplicar este objetivo.</div>';
+      return;
+    }
+    if (especialUi.modo === MODOS.ADAPT_PLANS) {
+      puente.saveAdaptObjective(especialUi.texto);
+      especialUi.texto = '';
+      especialUi.modo = null;
+      especialUi.aplicado = MODOS.ADAPT_PLANS;
+      especialUi.mensaje = 'Objetivo guardado. Todavía no cambió ningún plan: elige abajo cuál generar con este objetivo.';
+    } else {
+      especialUi.aplicado = MODOS.INDEPENDENT;
+      especialUi.mensaje = null;
+    }
+    renderEspecial();
   };
 
   app.querySelectorAll('[data-aplicar]').forEach((btn) => {
     btn.onclick = () => {
       const tipo = btn.dataset.aplicar;
-      const tienePlan = tipo === 'fuerza' ? (estado.dias && estado.dias.length > 0) : (estado.abdomen.dias && estado.abdomen.dias.length > 0);
-      if (tienePlan && !confirm(`Esto genera un plan nuevo de ${ETIQUETAS_GENERACION[tipo]} que reemplaza al activo. ¿Continuar?`)) return;
-      guardarIntencion();
-      if (tipo === 'fuerza') invocarGeneracionFuerza();
-      else generarRutinaAbdomenDesdeGenerador();
-      irAPantalla('inicio');
+      abrirGeneracionPlan(tipo, planActivo(tipo) ? 'regenerar' : 'crear');
     };
   });
-
-  if (window.GymAppTodayExperience) {
-    window.GymAppTodayExperience.mount(document.getElementById('today-root'), { screen: 'home', navigate: irAPantalla, title: null });
-  }
-
-  pintarPerfilEnAjustar();
-}
-
-// Read-only summary of the saved profile restrictions, with an explicit
-// in-place "Editar" that writes the same perfiles fields the legacy
-// Generador/modal already write (lesiones, condiciones_medicas) — so the
-// user never has to leave this screen just to correct them.
-async function pintarPerfilEnAjustar() {
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: perfil } = await supabase.from('perfiles')
-    .select('metas, lesiones, condiciones_medicas, dias_disponibles')
-    .eq('id', user.id).maybeSingle();
-
-  const seccion = document.getElementById('ajustar-perfil');
-  if (!seccion || estado.pantalla !== 'ajustar') return; // el usuario ya navegó a otra pantalla
-
-  if (!perfil) {
-    seccion.innerHTML = `<label class="etiqueta">Lo que GymApp ya sabe de ti</label>
-      <p class="subtitulo">Aún no tienes perfil guardado. Guárdalo desde Perfil para poder generar planes.</p>`;
-    return;
-  }
-
-  const edicion = { lesiones: [...(perfil.lesiones || [])], abierta: false, verTodo: false };
-  const LIMITE_RESUMEN = 160;
-
-  function pintar() {
-    const condiciones = perfil.condiciones_medicas || '';
-    const condicionesCorta = condiciones.length > LIMITE_RESUMEN && !edicion.verTodo
-      ? `${condiciones.slice(0, LIMITE_RESUMEN)}…`
-      : condiciones;
-    const lesionesHtml = (perfil.lesiones || []).length
-      ? perfil.lesiones.map((l) => `<span class="chip activo g2-chip-lectura">${escaparHtml(l)}</span>`).join('')
-      : '<span class="subtitulo">Ninguna registrada</span>';
-
-    seccion.innerHTML = `
-      <label class="etiqueta">Lo que GymApp ya sabe de ti</label>
-      ${edicion.abierta ? `
-        <label class="etiqueta">Lesiones o limitaciones</label>
-        <div class="chip-grid" id="ajustar-lesiones"></div>
-        <label class="etiqueta">Condición médica específica (opcional)</label>
-        <textarea class="input-modal" id="ajustar-condiciones">${escaparHtml(condiciones)}</textarea>
-        <div id="ajustar-perfil-mensaje"></div>
-        <div class="g2-intent-acciones">
-          <button type="button" class="g2-btn-secondary" id="ajustar-perfil-cancelar">Cancelar</button>
-          <button type="button" class="g2-btn-secondary" id="ajustar-perfil-guardar">Guardar restricciones</button>
-        </div>` : `
-        <div class="chip-grid">${lesionesHtml}</div>
-        ${condiciones ? `<p class="subtitulo g2-condiciones-resumen">${escaparHtml(condicionesCorta)}
-          ${condiciones.length > LIMITE_RESUMEN ? `<button type="button" class="g2-link-btn" id="ajustar-ver-todo">${edicion.verTodo ? 'Ver menos' : 'Ver todo'}</button>` : ''}</p>` : ''}
-        <p class="subtitulo">Metas: ${escaparHtml((perfil.metas || []).join(', ') || '—')} · ${perfil.dias_disponibles || '—'} día(s) de gym por semana</p>
-        <p class="subtitulo">Estas restricciones se guardan en tu perfil y se usan en cada generación hasta que tú las cambies.</p>
-        <button type="button" class="g2-btn-secondary" id="ajustar-perfil-editar">Editar restricciones</button>`}`;
-
-    if (!edicion.abierta) {
-      document.getElementById('ajustar-perfil-editar').onclick = () => { edicion.abierta = true; pintar(); };
-      const verTodo = document.getElementById('ajustar-ver-todo');
-      if (verTodo) verTodo.onclick = () => { edicion.verTodo = !edicion.verTodo; pintar(); };
-      return;
-    }
-
-    const lesionesDiv = document.getElementById('ajustar-lesiones');
-    const pintarLesiones = () => {
-      lesionesDiv.innerHTML = LESIONES_COMUNES.map((l) => `<button type="button" class="chip ${edicion.lesiones.includes(l) ? 'activo' : ''}" data-al="${l}">${l}</button>`).join('');
-      lesionesDiv.querySelectorAll('[data-al]').forEach((b) => {
-        b.onclick = () => {
-          const l = b.dataset.al;
-          edicion.lesiones = edicion.lesiones.includes(l) ? edicion.lesiones.filter((x) => x !== l) : [...edicion.lesiones, l];
-          pintarLesiones();
-        };
-      });
-    };
-    pintarLesiones();
-
-    document.getElementById('ajustar-perfil-cancelar').onclick = () => {
-      edicion.lesiones = [...(perfil.lesiones || [])];
-      edicion.abierta = false;
-      pintar();
-    };
-    document.getElementById('ajustar-perfil-guardar').onclick = async () => {
-      const btn = document.getElementById('ajustar-perfil-guardar');
-      btn.disabled = true;
-      const condicionesNuevas = document.getElementById('ajustar-condiciones').value.trim() || null;
-      const { error } = await supabase.from('perfiles')
-        .update({ lesiones: edicion.lesiones, condiciones_medicas: condicionesNuevas })
-        .eq('id', user.id);
-      if (error) {
-        document.getElementById('ajustar-perfil-mensaje').innerHTML = `<div class="mensaje error">No se pudo guardar: ${escaparHtml(error.message)}</div>`;
-        btn.disabled = false;
-        return;
-      }
-      perfil.lesiones = edicion.lesiones;
-      perfil.condiciones_medicas = condicionesNuevas;
-      edicion.abierta = false;
-      pintar();
+  const quitar = document.getElementById('btn-quitar-objetivo');
+  if (quitar) {
+    quitar.onclick = () => {
+      puente.clearAdaptObjective();
+      especialUi.aplicado = null;
+      especialUi.mensaje = null;
+      renderEspecial();
     };
   }
 
-  pintar();
+  if (especialUi.aplicado === MODOS.INDEPENDENT) {
+    montarArmadorSesion(document.getElementById('today-root'), {});
+  }
 }
 
-// =========================================================================
-// Planes — product hub for the five training products. Each card reuses
-// existing legacy generation/regeneration behavior where it already works
-// (Fuerza/Cardio/Core just open the existing, unchanged renderRutina/
-// renderCardio/renderAbdomen screens); Calistenia uses the new engine
-// (no legacy equivalent exists); Rehabilitación is an honest "not yet"
-// placeholder — see renderRehabilitacion().
-// =========================================================================
-function renderPlanes() {
-  const fuerzaActiva = estado.dias && estado.dias.length > 0;
-  const cardioActivo = estado.cardio.dias && estado.cardio.dias.length > 0;
-  const coreActivo = estado.abdomen.dias && estado.abdomen.dias.length > 0;
-
-  app.innerHTML = '';
-  app.appendChild(h(`
-    <div>
-      <header class="g2-appbar"><h1>Planes</h1><p>Tus programas de entrenamiento</p></header>
-
-      <div class="g2-product-card">
-        <div class="g2-product-info">
-          <div class="g2-product-name">💪 Fuerza / Gimnasio</div>
-          <div class="g2-product-status">${fuerzaActiva ? `${estado.dias.length} día(s) activos` : 'Sin plan activo'}</div>
-        </div>
-        <button type="button" class="g2-btn-secondary" data-plan-btn="rutina">${fuerzaActiva ? 'Ver plan' : 'Crear plan'}</button>
-      </div>
-
-      <div class="g2-product-card">
-        <div class="g2-product-info">
-          <div class="g2-product-name">🏃 Cardio</div>
-          <div class="g2-product-status">${cardioActivo ? `${estado.cardio.dias.length} día(s) activos` : 'Sin plan activo'}</div>
-        </div>
-        <button type="button" class="g2-btn-secondary" data-plan-btn="cardio">${cardioActivo ? 'Ver plan' : 'Crear plan'}</button>
-      </div>
-
-      <div class="g2-product-card">
-        <div class="g2-product-info">
-          <div class="g2-product-name">🔥 Core / Abdomen</div>
-          <div class="g2-product-status">${coreActivo ? `${estado.abdomen.dias.length} día(s) activos` : 'Sin plan activo'}</div>
-        </div>
-        <button type="button" class="g2-btn-secondary" data-plan-btn="abdomen">${coreActivo ? 'Ver plan' : 'Crear plan'}</button>
-      </div>
-
-      <div class="g2-product-card">
-        <div class="g2-product-info">
-          <div class="g2-product-name">🤸 Calistenia</div>
-          <div class="g2-product-status">Generación bajo demanda</div>
-        </div>
-        <button type="button" class="g2-btn-secondary" data-plan-btn="calistenia">Crear sesión</button>
-      </div>
-
-      <div class="g2-product-card g2-product-card-soon">
-        <div class="g2-product-info">
-          <div class="g2-product-name">🩹 Rehabilitación / Adaptaciones</div>
-          <div class="g2-product-status">Próximamente</div>
-        </div>
-        <button type="button" class="g2-btn-secondary" data-plan-btn="rehabilitacion">Ver</button>
-      </div>
-
-      <button type="button" class="boton-secundario" id="btn-mas-herramientas" style="text-align:left;padding-left:0;margin-top:10px">⋯ Más herramientas (Extra, Salir)</button>
-    </div>`));
-
-  app.querySelectorAll('[data-plan-btn]').forEach((btn) => {
-    btn.onclick = () => irAPantalla(btn.dataset.planBtn);
-  });
-  document.getElementById('btn-mas-herramientas').onclick = () => irAPantalla('mas');
-}
-
-// Calistenia: no legacy generator exists for this product, so it uses the
-// new deterministic pipeline directly (Context Engine -> Compatibility
-// Engine -> Workout Planner), locked to the calisthenics modality — same
-// underlying flow as "Ajustar", just product-scoped.
-function renderCalistenia() {
-  montarTodayExperience('home', {
-    lockedModalities: ['calisthenics'],
-    title: 'Calistenia',
-    subtitle: 'Genera tu sesión de calistenia de hoy.',
-  });
-}
-
-// Rehabilitación: an honest placeholder, not a fabricated feature.
-// GymApp's restriction model (src/context-engine) can filter exercises
-// away from a declared restriction, but there is no rehabilitation
-// plan/program concept yet (see docs/REENGINEERING_DECISION_FRAME.md's
-// "Rehabilitation activity" — a future domain concept, not built). Do not
-// invent one tonight; showing "próximamente" is the honest choice.
-function renderRehabilitacion() {
-  app.innerHTML = '';
-  app.appendChild(h(`
-    <div>
-      <header class="g2-appbar"><h1>Rehabilitación / Adaptaciones</h1><p>Próximamente</p></header>
-      <div class="vacio">
-        <div class="icono-grande">🩹</div>
-        <p>GymApp todavía no genera planes de rehabilitación.</p>
-      </div>
-      <p class="subtitulo">Esto requiere un modelo de restricciones/lesiones más completo que el actual — preferimos no inventar una recomendación sin ese soporte.</p>
-      <button type="button" class="boton-secundario" id="btn-volver-planes" style="text-align:left;padding-left:0">← Volver a Planes</button>
-    </div>`));
-  document.getElementById('btn-volver-planes').onclick = () => irAPantalla('planes');
-}
-
-// Entrenar: shows the in-progress active workout (state lives in
-// src/today-experience/workout-session.mjs's shared store, not in this
-// mount, so it survives navigating away and back). If nothing is in
-// progress, the module itself renders an empty state pointing back to
-// Inicio. Used both for the Today Coordinator's combined session (started
-// from Inicio) and for Calistenia's individual session.
+// Entrenar: la sesión en curso (su estado vive en el store compartido de
+// src/today-experience/workout-session.mjs, así sobrevive a navegar).
+// Si no hay nada en curso, el módulo muestra un estado vacío que regresa a
+// Entrenamiento.
 function renderEntrenar() {
-  montarTodayExperience('active');
-}
-
-function montarTodayExperience(pantallaModulo, opciones = {}) {
   app.innerHTML = '<div id="today-root"></div>';
   const contenedor = document.getElementById('today-root');
   if (window.GymAppTodayExperience) {
-    window.GymAppTodayExperience.mount(contenedor, { screen: pantallaModulo, navigate: irAPantalla, ...opciones });
+    window.GymAppTodayExperience.mount(contenedor, { screen: 'active', navigate: irAPantalla });
   } else {
     contenedor.innerHTML = '<div class="mensaje error">No se pudo cargar el módulo de entrenamiento. Revisa la consola.</div>';
   }
 }
 
-// =========================================================================
-// Más — acceso temporal a pantallas heredadas (GA-005). Nada de su
-// contenido cambió; solo se movieron un nivel más profundo en la
-// navegación para que Hoy/Entrenar/Progreso/Perfil sean lo primario.
-// =========================================================================
-function renderMas() {
-  app.innerHTML = '';
-  app.appendChild(h(`
-    <div>
-      <h1 class="titulo">Más</h1>
-      <p class="subtitulo">Herramientas y pantallas anteriores de GymApp</p>
-      <div class="tarjeta-sesion" data-mas="generador"><div class="fecha">⚙️ Generador</div><span class="subtitulo">Preferencias y generación de rutinas (versión clásica)</span></div>
-      <div class="tarjeta-sesion" data-mas="rutina"><div class="fecha">📋 Rutina clásica</div><span class="subtitulo">Rutina de fuerza por días</span></div>
-      <div class="tarjeta-sesion" data-mas="abdomen"><div class="fecha">🔥 Abdomen</div><span class="subtitulo">Rutina de abdomen por días</span></div>
-      <div class="tarjeta-sesion" data-mas="cardio"><div class="fecha">🏃 Cardio</div><span class="subtitulo">Plan de cardio por días</span></div>
-      <div class="tarjeta-sesion" data-mas="extra"><div class="fecha">🧗 Extra</div><span class="subtitulo">Actividad extra (escalada, calistenia, otro)</span></div>
-      <div class="tarjeta-sesion" data-mas="salir"><div class="fecha">🚪 Salir</div><span class="subtitulo">Cerrar sesión</span></div>
-    </div>`));
-  app.querySelectorAll('[data-mas]').forEach((el) => {
-    el.style.cursor = 'pointer';
-    el.onclick = () => {
-      const destino = el.dataset.mas;
-      if (destino === 'salir') { supabase.auth.signOut(); return; }
-      irAPantalla(destino);
-    };
+// Armador de sesiones bajo demanda (tiempo/lugar/modalidades de ESA
+// sesión — nunca de un plan semanal). Lo usan Calistenia y el modo
+// "entrenamiento independiente" de Entrenamiento especial.
+function montarArmadorSesion(contenedor, { lockedModalities = null }) {
+  if (!contenedor) return;
+  if (!window.GymAppTodayExperience) {
+    contenedor.innerHTML = '<div class="mensaje error">No se pudo cargar el módulo de entrenamiento. Revisa la consola.</div>';
+    return;
+  }
+  window.GymAppTodayExperience.mount(contenedor, {
+    screen: 'home',
+    navigate: irAPantalla,
+    lockedModalities,
+    title: null,
+    showDevControls: controlesDevActivos(),
   });
 }
 
@@ -785,39 +728,202 @@ function renderAuth() {
 }
 
 // =========================================================================
-// Perfil / Onboarding
+// Perfil — pantalla de llegada. El contexto persistente que GymApp usa
+// para adaptar TODOS los planes, y el ÚNICO lugar donde se edita (antes
+// estaba repartido entre Perfil, Generador y el modal de generación).
+// Sin acciones de generación aquí: eso vive en Entrenamiento.
+// Un solo estado (`perfilForm`, precargado en cargarRutina) y un solo
+// guardado (guardarPerfil).
 // =========================================================================
+const NIVELES = [
+  { valor: 'principiante', etiqueta: 'Principiante' },
+  { valor: 'intermedio', etiqueta: 'Intermedio' },
+  { valor: 'avanzado', etiqueta: 'Avanzado' },
+];
+// Valores tal como los usa `ejercicios.equipo` (y la validación de
+// generate-routine contra `perfiles.equipo_disponible`).
+const EQUIPOS = [
+  { valor: 'barra', etiqueta: 'Barra' },
+  { valor: 'mancuernas', etiqueta: 'Mancuernas' },
+  { valor: 'polea', etiqueta: 'Polea' },
+  { valor: 'maquina', etiqueta: 'Máquinas' },
+  { valor: 'peso_corporal', etiqueta: 'Peso corporal' },
+];
+
 const perfilForm = {
-  nombre: '', peso: '', edad: '', metas: ['Hipertrofia'], lesiones: ['Rodilla'], condicionesMedicas: '', dias: 4, diasCardio: 3, evitarMaquinas: false,
+  nombre: '',
+  peso: '',
+  edad: '',
+  nivel: 'intermedio',
+  metas: ['Hipertrofia'],
+  lesiones: [],
+  condicionesMedicas: '',
+  dias: 4,
+  diasCardio: 3,
+  equipo: EQUIPOS.map((e) => e.valor),
+  evitarMaquinas: false,
 };
+// true cuando ya se intentó leer el perfil de la base (exista o no) — así
+// "Guardar" nunca sobrescribe el perfil real con los valores por defecto.
 let perfilPrecargado = false;
 
-function renderOnboarding() {
+function renderPerfil() {
+  if (!perfilPrecargado) {
+    app.innerHTML = '<div class="pantalla-carga"><div class="spinner"></div></div>';
+    return;
+  }
+
   app.innerHTML = '';
   app.appendChild(h(`
     <div>
-      <h1 class="titulo">${perfilForm.nombre ? `Hola, ${perfilForm.nombre} 👋` : 'Cuéntanos de ti'}</h1>
-      <p class="subtitulo">Tus datos básicos — las preferencias de rutina están en la pestaña Generador</p>
-      <div class="campo">
-        <label class="etiqueta">Tu nombre</label>
-        <input type="text" id="p-nombre" placeholder="¿Cómo te llamas?" value="${perfilForm.nombre}" />
-      </div>
-      <div class="fila-2col">
-        <div><label class="etiqueta">Peso (kg)</label><input type="number" id="p-peso" placeholder="70" value="${perfilForm.peso}" /></div>
-        <div><label class="etiqueta">Edad</label><input type="number" id="p-edad" placeholder="28" value="${perfilForm.edad}" /></div>
-      </div>
+      <header class="g2-appbar">
+        <h1>${perfilForm.nombre ? `Hola, ${escaparHtml(perfilForm.nombre)}` : 'Perfil'}</h1>
+        <p>Esto es lo que GymApp sabe de ti y usa para adaptar tus planes.</p>
+      </header>
+
+      <section class="g2-card">
+        <h2 class="g2-seccion">Datos básicos</h2>
+        <div class="campo">
+          <label class="etiqueta">Tu nombre</label>
+          <input type="text" id="p-nombre" placeholder="¿Cómo te llamas?" value="${escaparHtml(perfilForm.nombre)}" />
+        </div>
+        <div class="fila-2col">
+          <div><label class="etiqueta">Peso (kg)</label><input type="number" id="p-peso" placeholder="70" value="${escaparHtml(perfilForm.peso)}" /></div>
+          <div><label class="etiqueta">Edad</label><input type="number" id="p-edad" placeholder="28" value="${escaparHtml(perfilForm.edad)}" /></div>
+        </div>
+        <label class="etiqueta">Nivel de entrenamiento</label>
+        <div class="chip-grid" id="p-nivel"></div>
+      </section>
+
+      <section class="g2-card">
+        <h2 class="g2-seccion">Objetivos</h2>
+        <label class="etiqueta">Tus metas (hasta ${MAX_METAS})</label>
+        <div class="chip-grid" id="p-metas"></div>
+        <div id="p-prioridad"></div>
+      </section>
+
+      <section class="g2-card">
+        <h2 class="g2-seccion">Disponibilidad</h2>
+        <label class="etiqueta">Días de gym por semana (Fuerza y Core): <span id="p-dias-num">${perfilForm.dias}</span></label>
+        <div class="chip-grid" id="p-dias"></div>
+        <label class="etiqueta">Días de cardio por semana: <span id="p-dias-cardio-num">${perfilForm.diasCardio}</span></label>
+        <div class="chip-grid" id="p-dias-cardio"></div>
+        <label class="etiqueta">Equipo al que sueles tener acceso</label>
+        <div class="chip-grid" id="p-equipo"></div>
+      </section>
+
+      <section class="g2-card">
+        <h2 class="g2-seccion">Restricciones y consideraciones</h2>
+        <label class="etiqueta">Lesiones o limitaciones</label>
+        <div class="chip-grid" id="p-lesiones"></div>
+        <label class="etiqueta">Condición médica específica (opcional, pero importante)</label>
+        <textarea class="input-modal" id="p-condiciones">${escaparHtml(perfilForm.condicionesMedicas)}</textarea>
+        <p class="subtitulo g2-nota">Esto no sustituye la valoración de tu médico o fisioterapeuta. Se mantiene hasta que tú lo cambies.</p>
+        <div class="toggle-fila ${perfilForm.evitarMaquinas ? 'activo' : ''}" id="p-evitar-maquinas">
+          <div class="toggle-dot"></div>
+          <div class="toggle-texto">
+            <strong>Priorizar equipo con más disponibilidad</strong>
+            <span>Barra, mancuernas, polea y peso corporal en vez de máquinas.</span>
+          </div>
+        </div>
+      </section>
+
       <div id="p-mensaje"></div>
-      <button class="boton-primario" id="p-guardar">Guardar perfil</button>
-      <p class="subtitulo" style="margin-top:8px">Para configurar metas, lesiones, condición médica y generar tu rutina, ve a la pestaña <strong>Generador</strong>.</p>
+      <button type="button" class="boton-primario" id="p-guardar">Guardar perfil</button>
 
       <h2 class="titulo" style="font-size:16px;margin-top:30px;margin-bottom:2px">Tu peso corporal</h2>
       <p class="subtitulo">Independiente del peso que usa la rutina — esto es tu historial en el tiempo</p>
       <div id="peso-form"></div>
       <div id="peso-grafica"></div>
       <div id="peso-lista"></div>
+
+      <button type="button" class="boton-secundario" id="p-salir" style="margin-top:24px">Cerrar sesión</button>
     </div>`));
 
+  // Cada grupo de chips se repinta solo a sí mismo (no toda la pantalla),
+  // para no perder lo que el usuario ya escribió en los campos de texto.
+  const pintarChips = (id, opciones, esActivo, alTocar, deshabilitado = () => false) => {
+    const div = document.getElementById(id);
+    const pintar = () => {
+      div.innerHTML = opciones.map((o) => `<button type="button" class="chip ${esActivo(o.valor) ? 'activo' : ''}" data-v="${o.valor}" ${deshabilitado(o.valor) ? 'disabled' : ''}>${o.etiqueta}</button>`).join('');
+      div.querySelectorAll('[data-v]').forEach((btn) => {
+        btn.onclick = () => { alTocar(btn.dataset.v); pintar(); };
+      });
+    };
+    pintar();
+    return pintar;
+  };
+
+  pintarChips('p-nivel', NIVELES, (v) => perfilForm.nivel === v, (v) => { perfilForm.nivel = v; });
+
+  const prioridadDiv = document.getElementById('p-prioridad');
+  let repintarMetas = () => {};
+  const pintarPrioridad = () => {
+    if (perfilForm.metas.length <= 1) { prioridadDiv.innerHTML = ''; return; }
+    prioridadDiv.innerHTML = `
+      <label class="etiqueta">¿Cuál es tu prioridad principal?</label>
+      <div class="chip-grid">
+        ${perfilForm.metas.map((m, i) => `<button type="button" class="chip ${i === 0 ? 'activo' : ''}" data-prio="${m}">${i === 0 ? '★ ' : ''}${m}</button>`).join('')}
+      </div>`;
+    prioridadDiv.querySelectorAll('[data-prio]').forEach((btn) => {
+      btn.onclick = () => {
+        const m = btn.dataset.prio;
+        perfilForm.metas = [m, ...perfilForm.metas.filter((x) => x !== m)];
+        repintarMetas();
+        pintarPrioridad();
+      };
+    });
+  };
+  repintarMetas = pintarChips(
+    'p-metas',
+    METAS.map((m) => ({ valor: m, etiqueta: m })),
+    (v) => perfilForm.metas.includes(v),
+    (v) => {
+      if (perfilForm.metas.includes(v)) perfilForm.metas = perfilForm.metas.filter((x) => x !== v);
+      else if (perfilForm.metas.length < MAX_METAS) perfilForm.metas = [...perfilForm.metas, v];
+      pintarPrioridad();
+    },
+    (v) => !perfilForm.metas.includes(v) && perfilForm.metas.length >= MAX_METAS,
+  );
+  pintarPrioridad();
+
+  const opcionesDias = (max) => Array.from({ length: max }, (_, i) => ({ valor: String(i + 1), etiqueta: String(i + 1) }));
+  pintarChips('p-dias', opcionesDias(6), (v) => perfilForm.dias === Number(v), (v) => {
+    perfilForm.dias = Number(v);
+    document.getElementById('p-dias-num').textContent = v;
+  });
+  pintarChips('p-dias-cardio', opcionesDias(7), (v) => perfilForm.diasCardio === Number(v), (v) => {
+    perfilForm.diasCardio = Number(v);
+    document.getElementById('p-dias-cardio-num').textContent = v;
+  });
+  pintarChips(
+    'p-equipo',
+    EQUIPOS,
+    (v) => perfilForm.equipo.includes(v),
+    (v) => {
+      perfilForm.equipo = perfilForm.equipo.includes(v) ? perfilForm.equipo.filter((x) => x !== v) : [...perfilForm.equipo, v];
+    },
+    // Al menos un tipo de equipo: con la lista vacía el generador no
+    // filtraría nada, lo contrario de lo que el usuario quiso decir.
+    (v) => perfilForm.equipo.length === 1 && perfilForm.equipo.includes(v),
+  );
+  pintarChips(
+    'p-lesiones',
+    LESIONES_COMUNES.map((l) => ({ valor: l, etiqueta: l })),
+    (v) => perfilForm.lesiones.includes(v),
+    (v) => {
+      perfilForm.lesiones = perfilForm.lesiones.includes(v) ? perfilForm.lesiones.filter((x) => x !== v) : [...perfilForm.lesiones, v];
+    },
+  );
+
+  const toggleMaquinas = document.getElementById('p-evitar-maquinas');
+  toggleMaquinas.onclick = () => {
+    perfilForm.evitarMaquinas = !perfilForm.evitarMaquinas;
+    toggleMaquinas.classList.toggle('activo', perfilForm.evitarMaquinas);
+  };
+
   document.getElementById('p-guardar').onclick = guardarPerfil;
+  document.getElementById('p-salir').onclick = () => supabase.auth.signOut();
   renderPesoCorporal();
 }
 
@@ -827,10 +933,15 @@ async function guardarPerfil() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const peso = document.getElementById('p-peso').value;
   const edad = document.getElementById('p-edad').value;
+  const condicionesMedicas = document.getElementById('p-condiciones').value.trim();
 
   mensajeDiv.innerHTML = '';
   if (!peso || !edad) {
     mensajeDiv.innerHTML = '<div class="mensaje error">Completa tu peso y edad antes de continuar.</div>';
+    return;
+  }
+  if (perfilForm.metas.length === 0) {
+    mensajeDiv.innerHTML = '<div class="mensaje error">Elige al menos una meta.</div>';
     return;
   }
 
@@ -839,34 +950,41 @@ async function guardarPerfil() {
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
-
-    // Solo nombre/peso/edad — 'upsert' porque el registro podría no existir
-    // aún (usuario nuevo); si ya existe, esto NO toca metas/lesiones/etc.
-    // que se guardan desde Generador, gracias a que Postgres solo actualiza
-    // las columnas que se le pasan explícitamente.
+    // 'upsert': el registro podría no existir aún (usuario nuevo). Escribe
+    // exactamente las columnas que antes escribían, por separado, Perfil
+    // (nombre/peso/edad/nivel) y Generador (metas, lesiones, condición,
+    // días, equipo, máquinas) — ahora desde un solo lugar.
     const { error: perfilError } = await supabase.from('perfiles').upsert({
       id: user.id,
       nombre: nombre || null,
       peso_kg: parseFloat(peso),
       edad: parseInt(edad, 10),
-      nivel: 'intermedio',
+      nivel: perfilForm.nivel,
+      metas: perfilForm.metas,
+      lesiones: perfilForm.lesiones,
+      condiciones_medicas: condicionesMedicas || null,
+      dias_disponibles: perfilForm.dias,
+      dias_disponibles_cardio: perfilForm.diasCardio,
+      equipo_disponible: perfilForm.equipo,
+      evitar_maquinas: perfilForm.evitarMaquinas,
     });
     if (perfilError) throw new Error(`No se pudo guardar tu perfil: ${perfilError.message}`);
     perfilForm.nombre = nombre;
-    const tituloEl = document.querySelector('#app h1.titulo');
-    if (tituloEl && nombre) tituloEl.textContent = `Hola, ${nombre} 👋`;
+    perfilForm.peso = peso;
+    perfilForm.edad = edad;
+    perfilForm.condicionesMedicas = condicionesMedicas;
+    const tituloEl = document.querySelector('#app .g2-appbar h1');
+    if (tituloEl && nombre) tituloEl.textContent = `Hola, ${nombre}`;
 
-    mensajeDiv.innerHTML = '<div class="mensaje info">Perfil guardado.</div>';
+    mensajeDiv.innerHTML = '<div class="mensaje info">Perfil guardado. Se usará la próxima vez que generes o regeneres un plan.</div>';
   } catch (err) {
-    mensajeDiv.innerHTML = `<div class="mensaje error">${err.message}</div>`;
+    mensajeDiv.innerHTML = `<div class="mensaje error">${escaparHtml(err.message)}</div>`;
   } finally {
     boton.disabled = false;
     boton.textContent = 'Guardar perfil';
   }
 }
 
-// Reutilizable desde la pestaña Rutina — asume que el perfil ya se guardó
-// antes desde Perfil (no vuelve a pedir peso/edad/metas aquí).
 // Extrae un mensaje de error entendible para el usuario a partir de lo que
 // devuelve la Edge Function, SIN mostrar internos técnicos (detalles de
 // validación por ejercicio, JSON crudo, etc.) como única explicación —
@@ -920,15 +1038,15 @@ async function invocarGeneracion(tipo, nombreFuncion, body) {
   if (estado.generacion[tipo].activo) return; // ya hay una generación de este tipo en curso — no duplicar
 
   estado.generacion[tipo] = { activo: true, mensaje: null };
-  if (estado.pantalla === 'generador') renderGenerador();
-  else if (estado.pantalla === 'inicio') renderInicio();
+  repintarSiMuestraGeneracion(tipo);
   actualizarIndicadorGeneracion();
 
-  // Contexto libre de hoy ("¿Qué necesitas hoy?", ver renderAjustar): solo
-  // generate-routine lo acepta, como intención etiquetada — nunca como
-  // restricción. Sin nota, el cuerpo queda exactamente como antes.
-  const intencionHoy = nombreFuncion === 'generate-routine' ? leerIntencionHoy() : '';
-  const cuerpoPeticion = intencionHoy ? { ...(body || {}), intencion_hoy: intencionHoy } : body;
+  // Objetivo especial "adaptar mis planes" (ver renderEspecial): solo se
+  // envía a los productos cuyo generador lo acepta (Fuerza/Core, como
+  // `intencion_hoy` de generate-routine), como intención etiquetada —
+  // nunca como restricción. Sin objetivo, el cuerpo queda como antes.
+  const objetivo = leerObjetivoEspecialParaProducto(tipo);
+  const cuerpoPeticion = objetivo ? { ...(body || {}), intencion_hoy: objetivo } : body;
 
   const inicioMs = Date.now();
   const { data, error } = await supabase.functions.invoke(nombreFuncion, cuerpoPeticion ? { body: cuerpoPeticion } : undefined);
@@ -962,13 +1080,14 @@ async function invocarGeneracion(tipo, nombreFuncion, body) {
     else if (tipo === 'cardio') await cargarRutinaCardio();
   }
 
-  if (estado.pantalla === 'generador') renderGenerador();
-  else if (estado.pantalla === 'inicio') renderInicio();
+  repintarSiMuestraGeneracion(tipo);
   actualizarIndicadorGeneracion();
 }
 
-function invocarGeneracionFuerza() {
-  return invocarGeneracion('fuerza', 'generate-routine');
+// Repinta solo si la pantalla actual muestra el estado de esa generación:
+// la pantalla del producto, el hub, o Entrenamiento especial.
+function repintarSiMuestraGeneracion(tipo) {
+  if ([PLANES[tipo].pantalla, 'entrenamiento', 'especial'].includes(estado.pantalla)) render();
 }
 
 // =========================================================================
@@ -977,8 +1096,9 @@ function invocarGeneracionFuerza() {
 async function regenerarDia(diaNumero, tipo) {
   const esAbdomen = tipo === 'abdominales';
   abrirModalGeneracion({
-    titulo: `Regenerar Día ${diaNumero} de ${esAbdomen ? 'abdomen' : 'fuerza'}`,
-    tipoDias: 'gym',
+    titulo: `Regenerar Día ${diaNumero} de ${esAbdomen ? 'Core' : 'Fuerza'}`,
+    descripcion: 'Se genera de nuevo solo este día; el resto del plan no cambia.',
+    textoConfirmar: 'Regenerar día',
     onGenerar: async () => {
       const btnId = esAbdomen ? 'btn-regenerar-dia-ab' : 'btn-regenerar-dia';
       const mensajeId = esAbdomen ? 'regen-mensaje-ab' : 'regen-mensaje';
@@ -1014,8 +1134,9 @@ async function regenerarDia(diaNumero, tipo) {
 
 async function regenerarDiaCardio(diaNumero) {
   abrirModalGeneracion({
-    titulo: `Regenerar Día ${diaNumero} de cardio`,
-    tipoDias: 'cardio',
+    titulo: `Regenerar Día ${diaNumero} de Cardio`,
+    descripcion: 'Se genera de nuevo solo este día; el resto del plan no cambia.',
+    textoConfirmar: 'Regenerar día',
     onGenerar: async () => {
       const btn = document.getElementById('btn-regenerar-dia-cardio');
       const mensajeDiv = document.getElementById('regen-mensaje-cardio');
@@ -1047,31 +1168,36 @@ async function regenerarDiaCardio(diaNumero) {
 async function cargarRutina() {
   estado.cargandoRutina = true;
   estado.errorRutina = null;
-  if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
+  if (estado.pantalla === 'rutina' || estado.pantalla === 'entrenamiento') render();
 
   const userId = estado.sesion.user.id;
 
   const { data: perfilExistente } = await supabase
-    .from('perfiles').select('nombre, peso_kg, edad, metas, lesiones, condiciones_medicas, dias_disponibles, dias_disponibles_cardio, evitar_maquinas')
+    .from('perfiles').select('nombre, peso_kg, edad, nivel, metas, lesiones, condiciones_medicas, dias_disponibles, dias_disponibles_cardio, equipo_disponible, evitar_maquinas')
     .eq('id', userId).maybeSingle();
   if (perfilExistente) {
     perfilForm.nombre = perfilExistente.nombre || '';
     perfilForm.peso = perfilExistente.peso_kg ?? '';
     perfilForm.edad = perfilExistente.edad ?? '';
+    perfilForm.nivel = perfilExistente.nivel || perfilForm.nivel;
     perfilForm.metas = perfilExistente.metas || perfilForm.metas;
     perfilForm.lesiones = perfilExistente.lesiones || perfilForm.lesiones;
     perfilForm.condicionesMedicas = perfilExistente.condiciones_medicas || '';
     perfilForm.dias = perfilExistente.dias_disponibles || perfilForm.dias;
     perfilForm.diasCardio = perfilExistente.dias_disponibles_cardio || perfilForm.diasCardio;
+    // Vacío en la base = "sin filtro" para el generador; se muestra como
+    // todo el equipo marcado, que significa lo mismo.
+    if (perfilExistente.equipo_disponible?.length) perfilForm.equipo = [...perfilExistente.equipo_disponible];
     perfilForm.evitarMaquinas = perfilExistente.evitar_maquinas || false;
-
-    // Solo la PRIMERA vez que se precargan datos (al abrir la app), refresca
-    // la pantalla de Perfil para que se vean — si lo hiciéramos siempre,
-    // borraríamos el mensaje de éxito justo después de generar una rutina.
-    if (!perfilPrecargado) {
-      perfilPrecargado = true;
-      if (estado.pantalla === 'onboarding' || estado.pantalla === 'generador') render();
-    }
+  }
+  // Solo la PRIMERA vez (al abrir la app) — exista perfil o no — se marca
+  // como precargado y se refresca Perfil. Antes de esto Perfil muestra un
+  // indicador de carga, así "Guardar" nunca pisa el perfil real con los
+  // valores por defecto. Hacerlo siempre borraría el mensaje de éxito
+  // justo después de guardar.
+  if (!perfilPrecargado) {
+    perfilPrecargado = true;
+    if (estado.pantalla === 'perfil' || estado.pantalla === 'onboarding') render();
   }
 
   const { data: rutina, error: rutinaError } = await supabase
@@ -1082,7 +1208,7 @@ async function cargarRutina() {
   if (rutinaError) {
     estado.errorRutina = `No se pudo cargar tu rutina: ${rutinaError.message}`;
     estado.cargandoRutina = false;
-    if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'rutina' || estado.pantalla === 'entrenamiento') render();
     return;
   }
 
@@ -1090,7 +1216,7 @@ async function cargarRutina() {
     estado.rutinaId = null;
     estado.dias = [];
     estado.cargandoRutina = false;
-    if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'rutina' || estado.pantalla === 'entrenamiento') render();
     return;
   }
 
@@ -1103,7 +1229,7 @@ async function cargarRutina() {
   if (ejerciciosError) {
     estado.errorRutina = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
     estado.cargandoRutina = false;
-    if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'rutina' || estado.pantalla === 'entrenamiento') render();
     return;
   }
 
@@ -1167,14 +1293,14 @@ async function cargarRutina() {
   estado.tasaConsistenciaReciente = tasas.length ? tasas.reduce((a, b) => a + b, 0) / tasas.length : null;
 
   estado.cargandoRutina = false;
-  if (estado.pantalla === 'rutina' || estado.pantalla === 'inicio') render();
+  if (estado.pantalla === 'rutina' || estado.pantalla === 'entrenamiento') render();
 }
 
 async function cargarRutinaAbdomen() {
   const ab = estado.abdomen;
   ab.cargando = true;
   ab.error = null;
-  if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
+  if (estado.pantalla === 'abdomen' || estado.pantalla === 'entrenamiento') render();
 
   const userId = estado.sesion.user.id;
 
@@ -1186,7 +1312,7 @@ async function cargarRutinaAbdomen() {
   if (rutinaError) {
     ab.error = `No se pudo cargar tu rutina de abdomen: ${rutinaError.message}`;
     ab.cargando = false;
-    if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'abdomen' || estado.pantalla === 'entrenamiento') render();
     return;
   }
 
@@ -1194,7 +1320,7 @@ async function cargarRutinaAbdomen() {
     ab.rutinaId = null;
     ab.dias = [];
     ab.cargando = false;
-    if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'abdomen' || estado.pantalla === 'entrenamiento') render();
     return;
   }
 
@@ -1207,7 +1333,7 @@ async function cargarRutinaAbdomen() {
   if (ejerciciosError) {
     ab.error = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
     ab.cargando = false;
-    if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'abdomen' || estado.pantalla === 'entrenamiento') render();
     return;
   }
 
@@ -1262,7 +1388,7 @@ async function cargarRutinaAbdomen() {
   ab.tasaConsistenciaReciente = tasas.length ? tasas.reduce((a, b) => a + b, 0) / tasas.length : null;
 
   ab.cargando = false;
-  if (estado.pantalla === 'abdomen' || estado.pantalla === 'inicio') render();
+  if (estado.pantalla === 'abdomen' || estado.pantalla === 'entrenamiento') render();
 }
 
 // =========================================================================
@@ -1272,7 +1398,7 @@ async function cargarRutinaCardio() {
   const c = estado.cardio;
   c.cargando = true;
   c.error = null;
-  if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
+  if (estado.pantalla === 'cardio' || estado.pantalla === 'entrenamiento') render();
 
   const userId = estado.sesion.user.id;
 
@@ -1284,14 +1410,14 @@ async function cargarRutinaCardio() {
   if (rutinaError) {
     c.error = `No se pudo cargar tu plan de cardio: ${rutinaError.message}`;
     c.cargando = false;
-    if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'cardio' || estado.pantalla === 'entrenamiento') render();
     return;
   }
   if (!rutina) {
     c.rutinaId = null;
     c.dias = [];
     c.cargando = false;
-    if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'cardio' || estado.pantalla === 'entrenamiento') render();
     return;
   }
   c.rutinaId = rutina.id;
@@ -1302,7 +1428,7 @@ async function cargarRutinaCardio() {
   if (fasesError) {
     c.error = `No se pudieron cargar las fases: ${fasesError.message}`;
     c.cargando = false;
-    if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
+    if (estado.pantalla === 'cardio' || estado.pantalla === 'entrenamiento') render();
     return;
   }
 
@@ -1343,18 +1469,12 @@ async function cargarRutinaCardio() {
   c.semanaActual = celdas;
 
   c.cargando = false;
-  if (estado.pantalla === 'cardio' || estado.pantalla === 'inicio') render();
+  if (estado.pantalla === 'cardio' || estado.pantalla === 'entrenamiento') render();
 }
 
 function renderCardio() {
   app.innerHTML = '';
   const c = estado.cardio;
-
-  const botonGenerar = `
-    <button class="boton-secundario" id="btn-generar-cardio" style="text-align:left;padding-left:0">
-      ⚙️ Ir a Generador (${c.dias && c.dias.length > 0 ? 'regenerar' : 'generar'} plan de cardio)
-    </button>
-    <div id="cardio-gen-mensaje"></div>`;
 
   if (c.cargando) {
     app.appendChild(h('<div class="pantalla-carga"><div class="spinner"></div></div>'));
@@ -1365,10 +1485,12 @@ function renderCardio() {
   if (!c.dias || c.dias.length === 0) {
     app.appendChild(h(`
       <div>
+        ${encabezadoProducto('Cardio')}
         <div class="vacio"><div class="icono-grande">🏃</div><p>Aún no tienes plan de cardio.</p></div>
-        ${botonGenerar}
+        ${bloqueEstadoGeneracion('cardio')}
+        ${botonCrearPlanHtml('cardio')}
       </div>`));
-    document.getElementById('btn-generar-cardio').onclick = irAGenerador;
+    conectarAccionesPlan('cardio');
     return;
   }
 
@@ -1382,7 +1504,8 @@ function renderCardio() {
   const cont = h('<div></div>');
   cont.appendChild(h(`
     <div>
-      <h1 class="titulo">Plan de cardio</h1>
+      ${encabezadoProducto('Cardio', `${c.dias.length} día(s) por semana`)}
+      ${bloqueEstadoGeneracion('cardio')}
       <p class="subtitulo">${dia.nombre_dia}</p>
       <div class="semana-calendario">
         ${c.semanaActual.map((x) => `
@@ -1396,18 +1519,16 @@ function renderCardio() {
         <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
       </div>
       <div class="tabs-dias" id="tabs-dias-cardio"></div>
-      ${botonGenerar}
-      <button class="boton-secundario" id="btn-regenerar-dia-cardio" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
-      <div id="regen-mensaje-cardio"></div>
       <div id="fases-cardio"></div>
       <div id="cardio-mensaje"></div>
       <button class="boton-primario" id="btn-marcar-cardio" ${yaCompletadoHoy ? 'disabled' : ''}>
         ${yaCompletadoHoy ? 'Ya completaste esto hoy ✓' : 'Marcar como completado hoy'}
       </button>
+      ${bloqueAjustesPlan('cardio', { idRegenerarDia: 'btn-regenerar-dia-cardio', idMensajeDia: 'regen-mensaje-cardio' })}
     </div>`));
   app.appendChild(cont);
 
-  document.getElementById('btn-generar-cardio').onclick = irAGenerador;
+  conectarAccionesPlan('cardio');
   document.getElementById('btn-regenerar-dia-cardio').onclick = () => regenerarDiaCardio(dia.dia);
 
   const tabsDiv = document.getElementById('tabs-dias-cardio');
@@ -1473,207 +1594,6 @@ async function marcarCardioCompletado(diaNumero) {
   await cargarRutinaCardio();
 }
 
-function irAGenerador() {
-  estado.pantalla = 'generador';
-  render();
-}
-
-// =========================================================================
-// Pantalla Generador — configura preferencias y genera/regenera cada tipo
-// de rutina, todo en un solo lugar.
-// =========================================================================
-function renderGenerador() {
-  app.innerHTML = '';
-  app.appendChild(h(`
-    <div>
-      <h1 class="titulo">Generador</h1>
-      <p class="subtitulo">Ajusta esto cuando tu situación cambie (ej. una lesión que ya sanó), y genera cada rutina abajo.</p>
-
-      <label class="etiqueta">Tus metas (hasta ${MAX_METAS})</label>
-      <div class="chip-grid" id="g-metas"></div>
-      <div id="g-prioridad"></div>
-
-      <label class="etiqueta">¿Alguna lesión o limitación? (rápido, general)</label>
-      <div class="chip-grid" id="g-lesiones"></div>
-
-      <div class="campo">
-        <label class="etiqueta">Condiciones médicas específicas (opcional, pero importante)</label>
-        <textarea class="input-modal" id="g-condiciones">${perfilForm.condicionesMedicas}</textarea>
-        <p class="subtitulo" style="margin-top:6px;margin-bottom:0">
-          Esto NO sustituye la valoración de tu médico o fisioterapeuta.
-        </p>
-      </div>
-
-      <div class="toggle-fila ${perfilForm.evitarMaquinas ? 'activo' : ''}" id="g-evitar-maquinas">
-        <div class="toggle-dot"></div>
-        <div class="toggle-texto">
-          <strong>Priorizar equipo con más disponibilidad</strong>
-          <span>Barra, mancuernas, polea y peso corporal en vez de máquinas.</span>
-        </div>
-      </div>
-
-      <label class="etiqueta">Días de gym (fuerza/abdomen) por semana: <span id="g-dias-num">${perfilForm.dias}</span></label>
-      <div class="chip-grid" id="g-dias"></div>
-      <label class="etiqueta">Días de cardio por semana: <span id="g-dias-cardio-num">${perfilForm.diasCardio}</span></label>
-      <div class="chip-grid" id="g-dias-cardio"></div>
-
-      <div id="g-mensaje"></div>
-      <button class="boton-primario" id="g-guardar">Guardar preferencias</button>
-
-      <h2 class="titulo" style="font-size:16px;margin-top:28px;margin-bottom:10px">Generar rutinas</h2>
-
-      <div class="tarjeta-sesion">
-        <div class="fecha">💪 Fuerza</div>
-        <button class="boton-secundario" id="g-btn-fuerza" style="text-align:left;padding-left:0" ${estado.generacion.fuerza.activo ? 'disabled' : ''}>
-          ${estado.generacion.fuerza.activo ? '<div class="spinner"></div>' : `${estado.dias?.length ? 'Regenerar' : 'Generar'} rutina de fuerza`}
-        </button>
-        <div id="g-mensaje-fuerza">${estado.generacion.fuerza.mensaje ? `<div class="mensaje ${estado.generacion.fuerza.mensaje.tipo}">${estado.generacion.fuerza.mensaje.texto}</div>` : ''}</div>
-      </div>
-      <div class="tarjeta-sesion">
-        <div class="fecha">🔥 Abdomen</div>
-        <button class="boton-secundario" id="g-btn-abdomen" style="text-align:left;padding-left:0" ${estado.generacion.abdomen.activo ? 'disabled' : ''}>
-          ${estado.generacion.abdomen.activo ? '<div class="spinner"></div>' : `${estado.abdomen.dias?.length ? 'Regenerar' : 'Generar'} rutina de abdomen`}
-        </button>
-        <div id="g-mensaje-abdomen">${estado.generacion.abdomen.mensaje ? `<div class="mensaje ${estado.generacion.abdomen.mensaje.tipo}">${estado.generacion.abdomen.mensaje.texto}</div>` : ''}</div>
-      </div>
-      <div class="tarjeta-sesion">
-        <div class="fecha">🏃 Cardio</div>
-        <button class="boton-secundario" id="g-btn-cardio" style="text-align:left;padding-left:0" ${estado.generacion.cardio.activo ? 'disabled' : ''}>
-          ${estado.generacion.cardio.activo ? '<div class="spinner"></div>' : `${estado.cardio.dias?.length ? 'Regenerar' : 'Generar'} plan de cardio`}
-        </button>
-        <div id="g-mensaje-cardio">${estado.generacion.cardio.mensaje ? `<div class="mensaje ${estado.generacion.cardio.mensaje.tipo}">${estado.generacion.cardio.mensaje.texto}</div>` : ''}</div>
-      </div>
-    </div>`));
-
-  const metasDiv = document.getElementById('g-metas');
-  const prioridadDiv = document.getElementById('g-prioridad');
-
-  function pintarMetas() {
-    metasDiv.innerHTML = METAS.map((m) => {
-      const sel = perfilForm.metas.includes(m);
-      const deshab = !sel && perfilForm.metas.length >= MAX_METAS;
-      return `<button class="chip ${sel ? 'activo' : ''}" data-meta="${m}" ${deshab ? 'disabled' : ''}>${m}</button>`;
-    }).join('');
-    metasDiv.querySelectorAll('[data-meta]').forEach((btn) => {
-      btn.onclick = () => {
-        const m = btn.dataset.meta;
-        if (perfilForm.metas.includes(m)) perfilForm.metas = perfilForm.metas.filter((x) => x !== m);
-        else if (perfilForm.metas.length < MAX_METAS) perfilForm.metas = [...perfilForm.metas, m];
-        pintarMetas();
-        pintarPrioridad();
-      };
-    });
-  }
-
-  function pintarPrioridad() {
-    if (perfilForm.metas.length <= 1) { prioridadDiv.innerHTML = ''; return; }
-    prioridadDiv.innerHTML = `
-      <label class="etiqueta">¿Cuál es tu prioridad principal?</label>
-      <div class="chip-grid">
-        ${perfilForm.metas.map((m, i) => `<button class="chip ${i === 0 ? 'activo' : ''}" data-prio="${m}">${i === 0 ? '★ ' : ''}${m}</button>`).join('')}
-      </div>`;
-    prioridadDiv.querySelectorAll('[data-prio]').forEach((btn) => {
-      btn.onclick = () => {
-        const m = btn.dataset.prio;
-        perfilForm.metas = [m, ...perfilForm.metas.filter((x) => x !== m)];
-        pintarMetas();
-        pintarPrioridad();
-      };
-    });
-  }
-
-  const lesionesDiv = document.getElementById('g-lesiones');
-  function pintarLesiones() {
-    lesionesDiv.innerHTML = LESIONES_COMUNES.map((l) => {
-      const sel = perfilForm.lesiones.includes(l);
-      return `<button class="chip ${sel ? 'activo' : ''}" data-lesion="${l}">${l}${sel ? ' ✕' : ''}</button>`;
-    }).join('');
-    lesionesDiv.querySelectorAll('[data-lesion]').forEach((btn) => {
-      btn.onclick = () => {
-        const l = btn.dataset.lesion;
-        perfilForm.lesiones = perfilForm.lesiones.includes(l)
-          ? perfilForm.lesiones.filter((x) => x !== l)
-          : [...perfilForm.lesiones, l];
-        pintarLesiones();
-      };
-    });
-  }
-  pintarLesiones();
-
-  document.getElementById('g-evitar-maquinas').onclick = () => {
-    perfilForm.evitarMaquinas = !perfilForm.evitarMaquinas;
-    renderGenerador();
-  };
-
-  const diasDiv = document.getElementById('g-dias');
-  function pintarDias() {
-    diasDiv.innerHTML = [1, 2, 3, 4, 5, 6].map((d) => `<button class="chip ${perfilForm.dias === d ? 'activo' : ''}" data-dia="${d}">${d}</button>`).join('');
-    document.getElementById('g-dias-num').textContent = perfilForm.dias;
-    diasDiv.querySelectorAll('[data-dia]').forEach((btn) => {
-      btn.onclick = () => { perfilForm.dias = Number(btn.dataset.dia); pintarDias(); };
-    });
-  }
-  pintarDias();
-
-  const diasCardioDiv = document.getElementById('g-dias-cardio');
-  function pintarDiasCardio() {
-    diasCardioDiv.innerHTML = [1, 2, 3, 4, 5, 6, 7].map((d) => `<button class="chip ${perfilForm.diasCardio === d ? 'activo' : ''}" data-dia-cardio="${d}">${d}</button>`).join('');
-    document.getElementById('g-dias-cardio-num').textContent = perfilForm.diasCardio;
-    diasCardioDiv.querySelectorAll('[data-dia-cardio]').forEach((btn) => {
-      btn.onclick = () => { perfilForm.diasCardio = Number(btn.dataset.diaCardio); pintarDiasCardio(); };
-    });
-  }
-  pintarDiasCardio();
-
-  pintarMetas();
-  pintarPrioridad();
-
-  document.getElementById('g-guardar').onclick = guardarPreferenciasGenerador;
-  document.getElementById('g-btn-fuerza').onclick = () => invocarGeneracionFuerza();
-  document.getElementById('g-btn-abdomen').onclick = () => generarRutinaAbdomenDesdeGenerador();
-  document.getElementById('g-btn-cardio').onclick = () => generarRutinaCardioDesdeGenerador();
-}
-
-async function guardarPreferenciasGenerador() {
-  const mensajeDiv = document.getElementById('g-mensaje');
-  const boton = document.getElementById('g-guardar');
-  const condicionesMedicas = document.getElementById('g-condiciones').value.trim();
-  mensajeDiv.innerHTML = '';
-  boton.disabled = true;
-  boton.innerHTML = '<div class="spinner"></div>';
-
-  const { data: { user } } = await supabase.auth.getUser();
-  const equipoDisponible = ['barra', 'mancuernas', 'polea', 'maquina', 'peso_corporal'];
-
-  const { error } = await supabase.from('perfiles').update({
-    metas: perfilForm.metas,
-    lesiones: perfilForm.lesiones,
-    condiciones_medicas: condicionesMedicas || null,
-    dias_disponibles: perfilForm.dias,
-    dias_disponibles_cardio: perfilForm.diasCardio,
-    equipo_disponible: equipoDisponible,
-    evitar_maquinas: perfilForm.evitarMaquinas,
-  }).eq('id', user.id);
-
-  boton.disabled = false;
-  boton.textContent = 'Guardar preferencias';
-
-  if (error) {
-    mensajeDiv.innerHTML = `<div class="mensaje error">No se pudo guardar: ${error.message}</div>`;
-    return;
-  }
-  perfilForm.condicionesMedicas = condicionesMedicas;
-  mensajeDiv.innerHTML = '<div class="mensaje info">Preferencias guardadas.</div>';
-}
-
-function generarRutinaAbdomenDesdeGenerador() {
-  return invocarGeneracion('abdomen', 'generate-routine', { tipo: 'abdominales' });
-}
-
-function generarRutinaCardioDesdeGenerador() {
-  return invocarGeneracion('cardio', 'generate-cardio-plan');
-}
-
 // =========================================================================
 // Pantalla Rutina
 // =========================================================================
@@ -1691,13 +1611,15 @@ function renderRutina() {
   if (!estado.dias || estado.dias.length === 0) {
     app.appendChild(h(`
       <div>
+        ${encabezadoProducto('Fuerza / Gimnasio')}
         <div class="vacio">
           <div class="icono-grande">📋</div>
-          <p>Aún no tienes rutina de fuerza.</p>
+          <p>Aún no tienes plan de fuerza.</p>
         </div>
-        <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">⚙️ Ir a Generador</button>
+        ${bloqueEstadoGeneracion('fuerza')}
+        ${botonCrearPlanHtml('fuerza')}
       </div>`));
-    document.getElementById('btn-generar-fuerza').onclick = () => { estado.pantalla = 'generador'; render(); };
+    conectarAccionesPlan('fuerza');
     return;
   }
 
@@ -1708,7 +1630,8 @@ function renderRutina() {
   const cont = h('<div></div>');
   cont.appendChild(h(`
     <div>
-      <h1 class="titulo">Mi rutina</h1>
+      ${encabezadoProducto('Fuerza / Gimnasio', `${estado.dias.length} día(s) por semana${perfilForm.metas?.[0] ? ` · Meta principal: ${escaparHtml(perfilForm.metas[0])}` : ''}`)}
+      ${bloqueEstadoGeneracion('fuerza')}
       <p class="subtitulo">${dia.nombre_dia}</p>
       <div class="semana-calendario">
         ${estado.semanaActual.map((c) => `
@@ -1722,15 +1645,12 @@ function renderRutina() {
         <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
       </div>
       <div class="tabs-dias" id="tabs-dias"></div>
-      <button class="boton-secundario" id="btn-generar-fuerza" style="text-align:left;padding-left:0">⚙️ Ir a Generador (para regenerar toda la rutina)</button>
-      <button class="boton-secundario" id="btn-regenerar-dia" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
-      <div id="regen-mensaje"></div>
       <div id="lista-ejercicios"></div>
+      ${bloqueAjustesPlan('fuerza', { idRegenerarDia: 'btn-regenerar-dia', idMensajeDia: 'regen-mensaje' })}
     </div>`));
   app.appendChild(cont);
 
-  document.getElementById('btn-generar-fuerza').onclick = () => { estado.pantalla = 'generador'; render(); };
-
+  conectarAccionesPlan('fuerza');
   document.getElementById('btn-regenerar-dia').onclick = () => regenerarDia(dia.dia);
 
   const tabsDiv = document.getElementById('tabs-dias');
@@ -1781,12 +1701,6 @@ function renderAbdomen() {
   app.innerHTML = '';
   const ab = estado.abdomen;
 
-  const botonGenerar = `
-    <button class="boton-secundario" id="btn-generar-abdomen" style="text-align:left;padding-left:0">
-      ⚙️ Ir a Generador (${ab.dias && ab.dias.length > 0 ? 'regenerar' : 'generar'} rutina de abdomen)
-    </button>
-    <div id="abdomen-gen-mensaje"></div>`;
-
   if (ab.cargando) {
     app.appendChild(h('<div class="pantalla-carga"><div class="spinner"></div></div>'));
     return;
@@ -1797,13 +1711,15 @@ function renderAbdomen() {
   if (!ab.dias || ab.dias.length === 0) {
     app.appendChild(h(`
       <div>
+        ${encabezadoProducto('Core / Abdomen')}
         <div class="vacio">
           <div class="icono-grande">🔥</div>
-          <p>Aún no tienes rutina de abdomen.</p>
+          <p>Aún no tienes plan de core.</p>
         </div>
-        ${botonGenerar}
+        ${bloqueEstadoGeneracion('abdomen')}
+        ${botonCrearPlanHtml('abdomen')}
       </div>`));
-    document.getElementById('btn-generar-abdomen').onclick = irAGenerador;
+    conectarAccionesPlan('abdomen');
     return;
   }
 
@@ -1814,7 +1730,8 @@ function renderAbdomen() {
   const cont = h('<div></div>');
   cont.appendChild(h(`
     <div>
-      <h1 class="titulo">Rutina de abdomen</h1>
+      ${encabezadoProducto('Core / Abdomen', `${ab.dias.length} día(s) por semana`)}
+      ${bloqueEstadoGeneracion('abdomen')}
       <p class="subtitulo">${dia.nombre_dia}</p>
       <div class="semana-calendario">
         ${ab.semanaActual.map((c) => `
@@ -1828,14 +1745,12 @@ function renderAbdomen() {
         <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
       </div>
       <div class="tabs-dias" id="tabs-dias-ab"></div>
-      ${botonGenerar}
-      <button class="boton-secundario" id="btn-regenerar-dia-ab" style="text-align:left;padding-left:0">🔄 Regenerar solo este día con IA</button>
-      <div id="regen-mensaje-ab"></div>
       <div id="lista-ejercicios-ab"></div>
+      ${bloqueAjustesPlan('abdomen', { idRegenerarDia: 'btn-regenerar-dia-ab', idMensajeDia: 'regen-mensaje-ab' })}
     </div>`));
   app.appendChild(cont);
 
-  document.getElementById('btn-generar-abdomen').onclick = irAGenerador;
+  conectarAccionesPlan('abdomen');
   document.getElementById('btn-regenerar-dia-ab').onclick = () => regenerarDia(dia.dia, 'abdominales');
 
   const tabsDiv = document.getElementById('tabs-dias-ab');
@@ -2388,13 +2303,22 @@ async function renderHistorial() {
     .from('sesiones_entrenamiento').select('id, fecha, dia, rutinas(tipo, nombre)')
     .eq('usuario_id', userId).order('fecha', { ascending: false }).limit(30);
 
+  // Registrar actividad extra (escalada, calistenia libre, etc.) vive aquí:
+  // es actividad ya hecha, no un plan — Historial es su único acceso.
+  const encabezado = `
+    <header class="g2-appbar"><h1>Historial</h1><p>Lo que ya entrenaste</p></header>
+    <button type="button" class="boton-secundario" id="btn-actividad-extra" style="text-align:left;padding-left:0">➕ Registrar o ver actividad extra</button>`;
+  const conectarExtra = () => { document.getElementById('btn-actividad-extra').onclick = () => irAPantalla('extra'); };
+
   if (error) { app.innerHTML = `<div class="mensaje error">${error.message}</div>`; return; }
   if (!sesiones || sesiones.length === 0) {
-    app.innerHTML = `<div class="vacio"><div class="icono-grande">📅</div><p>Todavía no tienes sesiones registradas.</p></div>`;
+    app.innerHTML = `${encabezado}<div class="vacio"><div class="icono-grande">📅</div><p>Todavía no tienes sesiones registradas.</p></div>`;
+    conectarExtra();
     return;
   }
 
-  app.innerHTML = '<h1 class="titulo">Historial</h1><p class="subtitulo">Tus últimas sesiones (fuerza, abdomen y cardio)</p><div id="hist-lista"></div>';
+  app.innerHTML = `${encabezado}<p class="subtitulo">Tus últimas sesiones (fuerza, core y cardio)</p><div id="hist-lista"></div>`;
+  conectarExtra();
   const lista = document.getElementById('hist-lista');
 
   const iconoPorTipo = { fuerza: '💪', abdominales: '🔥', cardio: '🏃' };
@@ -2410,7 +2334,7 @@ async function renderHistorial() {
       const tarjeta = h(`
         <div class="tarjeta-sesion">
           <div class="fecha">${s.fecha} — ${etiquetaTipo}, Día ${s.dia ?? '?'}</div>
-          <div class="linea"><span>Ver detalle en Extra → Cardio</span></div>
+          <div class="linea"><span>Detalle en “Actividad extra” → Cardio</span></div>
         </div>`);
       lista.appendChild(tarjeta);
       continue;
@@ -2455,6 +2379,7 @@ async function renderExtra() {
   app.innerHTML = '';
   app.appendChild(h(`
     <div>
+      <button type="button" class="g2-back" id="extra-volver">‹ Historial</button>
       <h1 class="titulo">Actividad extra</h1>
       <p class="subtitulo">Cardio, abdomen, escalada — independiente de tu rutina de fuerza</p>
       <div class="chip-grid" id="extra-tipos"></div>
@@ -2465,6 +2390,7 @@ async function renderExtra() {
       <div id="extra-lista"><div class="pantalla-carga"><div class="spinner"></div></div></div>
     </div>`));
 
+  document.getElementById('extra-volver').onclick = () => irAPantalla('historial');
   const tiposDiv = document.getElementById('extra-tipos');
   function pintarTipos() {
     tiposDiv.innerHTML = TIPOS_EXTRA.map((t) =>

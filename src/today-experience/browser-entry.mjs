@@ -8,15 +8,29 @@
 import { mount } from './today-panel.mjs';
 import { adaptFuerzaDay, adaptAbdomenDay, adaptCardioDay } from './legacy-adapter.mjs';
 import { buildTodayOverview } from './today-coordinator.mjs';
-import { createSessionFromItems, setActiveSession } from './workout-session.mjs';
+import { createSessionFromItems, setActiveSession, getActiveSession } from './workout-session.mjs';
 import { readTodayIntent, saveTodayIntent, TODAY_INTENT_MAX_LENGTH } from './today-intent.mjs';
+import {
+  SPECIAL_TRAINING_MODES,
+  productsUsingObjective,
+  readAdaptObjective,
+  saveAdaptObjective,
+  clearAdaptObjective,
+  objectiveTextForProduct,
+} from './special-training.mjs';
 
-// Used by app.js's Inicio screen (the Today Coordinator's "Empezar
-// entrenamiento completo" action): builds one combined active-workout
-// session from already-adapted items and stores it, so the caller only
-// needs to `irAPantalla('entrenar')` afterward.
+// Builds one combined active-workout session from already-adapted items
+// and stores it, so the caller only needs to `irAPantalla('entrenar')`
+// afterward.
 function startSessionFromItems(items, planId) {
   setActiveSession(createSessionFromItems(items, { planId }));
+}
+
+// True while an on-demand session (Calistenia / Entrenamiento especial)
+// is started but not finished — used by Entrenamiento to offer "Continuar".
+function hasActiveSession() {
+  const session = getActiveSession();
+  return Boolean(session && !session.finishedAt);
 }
 
 window.GymAppTodayExperience = {
@@ -26,7 +40,14 @@ window.GymAppTodayExperience = {
   adaptCardioDay,
   buildTodayOverview,
   startSessionFromItems,
+  hasActiveSession,
   readTodayIntent: () => readTodayIntent(),
   saveTodayIntent: (text) => saveTodayIntent(text),
   TODAY_INTENT_MAX_LENGTH,
+  SPECIAL_TRAINING_MODES,
+  productsUsingObjective,
+  readAdaptObjective: () => readAdaptObjective(),
+  saveAdaptObjective: (text) => saveAdaptObjective(text),
+  clearAdaptObjective: () => clearAdaptObjective(),
+  objectiveTextForProduct,
 };

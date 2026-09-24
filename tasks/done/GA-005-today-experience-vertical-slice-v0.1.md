@@ -1,8 +1,7 @@
 # [GA-005] Today Experience Vertical Slice v0.1
 
-- **Status:** REVIEW (scope expanded — see "Scope expansion" below; remains
-  REVIEW until manual product approval, per the expanded acceptance
-  criteria, not merely the original v0.1 ones)
+- **Status:** DONE (approved after manual real-browser review on 2026-09-24 —
+  see "Manual browser acceptance" at the end of this file)
 - **Agent/Owner:** Claude Sonnet 5
 
 ## Scope expansion (product-pass addendum, same task — no new GA task)
@@ -688,3 +687,62 @@ Function with a Deno shim, bridge exports verified via Node-stubbed
 `window`, `git diff --check` clean. Not deployed, not committed. Strength/Abs
 root cause **not yet identified** — requires deploying this instrumented
 function and one real-browser retest.
+
+---
+
+## Result (UX reorganization pass — not committed, pending visual review)
+
+**Navigation:** exactly three global destinations, **Perfil / Entrenamiento /
+Historial**, landing on Perfil. Removed: Inicio, Planes, Más, "Ajustar
+contexto de hoy", Generador, Rehabilitación placeholder. Old or unknown
+screen names fall back to Perfil.
+
+**One place per action:** Perfil is the only place persistent context is
+edited. It merges the old Onboarding basics with the old Generador
+preferences, adds `nivel` (no longer hard-coded to `intermedio`) and
+`equipo_disponible` (no longer overwritten with every equipment type), and
+saves once. Entrenamiento is the only place plans are created or
+regenerated: every path goes `abrirGeneracionPlan` -> `abrirModalGeneracion`
+(days only, plus a read-only summary of the profile context being used) ->
+`invocarGeneracion`. No weekly flow asks for session duration. Historial
+holds completed activity plus "Actividad extra".
+
+**Products:** Fuerza, Cardio and Core share the same pattern (Ver plan /
+Crear plan; "Ajustar plan" → regenerate or change days, regenerate one
+day). Calistenia is presented honestly as an on-demand session with no
+persisted plan. Entrenamiento especial has two explicit modes:
+independent session (session builder, nothing persisted) and "adapt my
+plans" (objective stored in this browser, applied only when the user
+generates Fuerza or Core, and never sent to Cardio). No rehabilitation
+product is shown.
+
+**Not changed:** Edge Functions, Supabase schema, the Cardio backend, and
+the engines. Demo/dev controls in the session builder are hidden unless
+`?dev=1`.
+
+**Validation:**
+- 93/93 tests pass (the 88 existing plus 5 new `special-training` tests).
+- `node --check` is clean on the modified browser JS.
+- A scratch jsdom smoke run of the real `app.js` and module bridge, with a
+  fake Supabase client, walked the manual acceptance flow with and without
+  active plans. All assertions passed.
+- No real-browser or real-Supabase run yet.
+
+---
+
+## Manual browser acceptance (2026-09-24) — DONE
+
+The user manually reviewed the reorganized GymApp in a real browser and
+approved GA-005. Accepted as the new GymApp product baseline:
+
+- Navigation **Perfil / Entrenamiento / Historial**, with Perfil as the
+  landing screen.
+- Fuerza generation works.
+- Core generation works.
+- Cardio generation works.
+- The user's shoulder context appears to be considered by generation.
+- The simplified organization is accepted as the new GymApp baseline.
+
+Status: **DONE**. No features were added at closure, and Exercise Library
+integration has not been started under this task. Closure did not merge,
+deploy, or change Supabase.
