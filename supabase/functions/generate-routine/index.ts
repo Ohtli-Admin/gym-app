@@ -45,14 +45,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   RESULTADO,
-  clasificarFormaRespuesta,
-  describirIntento,
   nuevoIdDiagnostico,
   textoAcotado,
   validarRutina,
   type ErrorValidacion,
   type IntentoDiagnostico,
 } from "./diagnostico.ts";
+import { ejecutarIntentos } from "./reintentos.ts";
 
 // Límite duro para la nota libre "¿Qué necesitas hoy?" que puede mandar el
 // cliente (ver app.js renderAjustar). Igual al del cliente.
@@ -83,9 +82,21 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 // cut short. This was the confirmed root cause of routines failing
 // validation twice in a row on real, lengthy medical/restriction input —
 // see this file's git history / GA-005 defect report for the analysis.
+//
+// `strict: true` (Anthropic "strict tool use", documented as supported on
+// claude-sonnet-5): the API constrains sampling so `input` always matches
+// this schema — in particular `dias` and `resumen` are always present.
+// This is the direct fix for the real DIAS_AUSENTES failure (tool_use with
+// no `dias`). Strict mode requires `additionalProperties: false` on every
+// object and does NOT support `maxItems`, so the old `alternativas`
+// `maxItems: 2` was removed from the schema and the cap of 2 is enforced in
+// code instead (see `evaluar` below). A truncated response
+// (stop_reason=max_tokens) can still be incomplete — strict does not change
+// that — and reintentos.ts still handles every shape failure defensively.
 const ROUTINE_TOOL = {
   name: "generar_rutina",
   description: "Genera una rutina de entrenamiento estructurada por días.",
+  strict: true,
   input_schema: {
     type: "object",
     properties: {
@@ -107,7 +118,6 @@ const ROUTINE_TOOL = {
                   orden: { type: "integer" },
                   alternativas: {
                     type: "array",
-                    maxItems: 2,
                     items: {
                       type: "object",
                       properties: {
@@ -115,19 +125,23 @@ const ROUTINE_TOOL = {
                         motivo: { type: "string" },
                       },
                       required: ["exercise_id", "motivo"],
+                      additionalProperties: false,
                     },
                   },
                 },
                 required: ["exercise_id", "series", "reps_objetivo", "orden"],
+                additionalProperties: false,
               },
             },
           },
           required: ["dia", "nombre", "ejercicios"],
+          additionalProperties: false,
         },
       },
       resumen: { type: "string" },
     },
     required: ["dias", "resumen"],
+    additionalProperties: false,
   },
 };
 
@@ -504,73 +518,15 @@ Deno.serve(async (req) => {
       : `Genera la rutina para este usuario:\n${JSON.stringify(perfilParaPrompt)}`;
     const mensajesConversacion: any[] = [{ role: "user", content: mensajeInicial }];
 
-    let rutina: any = null;
-    let errores: ErrorValidacion[] = [];
-    let motivoFalloFinal: string | null = null;
-    // Explícito, nunca implícito: true únicamente cuando una rutina sin
-    // errores duros trae MENOS días de los solicitados. Un resultado
-    // parcial sigue siendo determinista y sigue pasando por exactamente
-    // las mismas validaciones de catálogo/equipo/contraindicación — lo
-    // único que cambia es que el llamador debe comunicarlo como degradado,
-    // no como éxito completo silencioso (ver validarRutina en diagnostico.ts).
-    let rutinaEsParcial = false;
-    const INTENTOS_MAXIMOS = 2;
-
-    for (let intento = 1; intento <= INTENTOS_MAXIMOS; intento++) {
-      const inicioIntentoMs = Date.now();
-      const registrarIntento = (resultado: string, datos: {
-        input?: any; stopReason?: string | null; errores?: ErrorValidacion[];
-        usage?: any; httpStatusModelo?: number | null;
-      }) => {
-        const d = describirIntento({
-          intento,
-          resultado,
-          input: datos.input ?? null,
-          stopReason: datos.stopReason ?? null,
-          errores: datos.errores,
-          usage: datos.usage,
-          httpStatusModelo: datos.httpStatusModelo,
-          ms: Date.now() - inicioIntentoMs,
-        });
-        diagnostico.intentos.push(d);
-        log("intento", { ...d });
-      };
-
-      let respuestaModelo;
-      try {
-        respuestaModelo = await llamarClaude(systemPrompt, mensajesConversacion);
-      } catch (err) {
-        if (!(err instanceof ErrorApiModelo)) throw err;
-        registrarIntento(RESULTADO.ERROR_API_MODELO, { httpStatusModelo: err.status });
-        motivoFalloFinal = RESULTADO.ERROR_API_MODELO;
-        errores = [{ codigo: RESULTADO.ERROR_API_MODELO, texto: err.message }];
-        break;
-      }
-      const { input: candidato, stopReason, toolUseId, usage } = respuestaModelo;
-
-      // Chequeo de cordura ANTES de procesar nada más: sin tool_use, sin
-      // `dias`, más de ~10 días, o `stop_reason === "max_tokens"` sin
-      // `dias` utilizable. En ninguno de esos casos hay un tool_use
-      // completo que se pueda reproducir como turno del asistente para dar
-      // retroalimentación específica — solo se puede reintentar con la
-      // conversación tal cual.
-      const falloForma = clasificarFormaRespuesta(candidato, stopReason);
-      if (falloForma) {
-        registrarIntento(falloForma, { input: candidato, stopReason, usage });
-        motivoFalloFinal = falloForma;
-        errores = [{ codigo: falloForma, texto: `Respuesta inutilizable del modelo (stop_reason=${stopReason}).` }];
-        if (intento < INTENTOS_MAXIMOS) continue;
-        break;
-      }
-
-      // Traducir las referencias cortas (1, 2, 3...) de vuelta al
-      // exercise_id real del catálogo, antes de validar y guardar. Se
-      // trabaja sobre una COPIA — el `candidato` original (con las
-      // referencias numéricas tal como las escribió el modelo) se
-      // conserva intacto para poder reenviarlo como su propio turno de
-      // conversación si hace falta un reintento corrector.
+    // Traduce las referencias cortas (1, 2, 3...) al exercise_id real y
+    // valida. Trabaja sobre una COPIA: el `candidato` original (con las
+    // referencias tal como las escribió el modelo) queda intacto para
+    // poder reenviarlo como su propio turno si hace falta un reintento
+    // corrector (ver reintentos.ts).
+    const lesionesUsuario = new Set(perfilParaPrompt.lesiones || []);
+    const catalogoParaValidar = catalogoFiltrado.map((ej) => ({ ...ej, exercise_id: ej.id }));
+    const evaluar = (candidato: any) => {
       const candidatoTraducido = structuredClone(candidato);
-      const lesionesUsuario = new Set(perfilParaPrompt.lesiones || []);
       for (const dia of candidatoTraducido.dias || []) {
         for (const ej of dia.ejercicios || []) {
           const real = catalogoPorRef.get(String(ej.exercise_id));
@@ -578,9 +534,12 @@ Deno.serve(async (req) => {
 
           // Alternativas: se traducen igual, pero si alguna resulta inválida
           // o contraindicada, simplemente se descarta (no truena la rutina
-          // completa por una alternativa de más).
+          // completa por una alternativa de más). Máximo 2: el límite antes
+          // vivía como `maxItems` en el schema, que el modo estricto no
+          // admite — ahora se aplica aquí, en código.
           const alternativasTraducidas = [];
           for (const alt of ej.alternativas || []) {
+            if (alternativasTraducidas.length >= 2) break;
             const realAlt = catalogoPorRef.get(String(alt.exercise_id));
             if (!realAlt) continue;
             const contraindicada = (realAlt.contraindicaciones || []).some((c: string) => lesionesUsuario.has(c));
@@ -595,58 +554,38 @@ Deno.serve(async (req) => {
           ej.alternativas = alternativasTraducidas;
         }
       }
-
-      const erroresIntento = validarRutina(
-        candidatoTraducido, catalogoFiltrado.map((ej) => ({ ...ej, exercise_id: ej.id })), perfilParaPrompt,
+      const errores = validarRutina(candidatoTraducido, catalogoParaValidar, perfilParaPrompt);
+      // Explícito, nunca implícito: parcial únicamente cuando una rutina
+      // sin errores duros trae MENOS días de los solicitados — se comunica
+      // como degradada, no como éxito completo silencioso.
+      const parcial = Boolean(
+        perfilParaPrompt.dias_disponibles && candidatoTraducido.dias.length < perfilParaPrompt.dias_disponibles,
       );
+      return { errores, resultado: candidatoTraducido, parcial };
+    };
 
-      if (erroresIntento.length === 0) {
-        rutina = candidatoTraducido;
-        errores = [];
-        motivoFalloFinal = null;
-        // Explícito, no silencioso: si el catálogo/restricciones no
-        // permitieron llenar los días pedidos de forma segura, esto se
-        // marca como parcial aquí mismo, en el único lugar donde se decide
-        // que la rutina es válida — nunca se infiere después a partir de
-        // un simple conteo desconectado de la decisión de éxito.
-        rutinaEsParcial = Boolean(
-          perfilParaPrompt.dias_disponibles && candidatoTraducido.dias.length < perfilParaPrompt.dias_disponibles,
-        );
-        registrarIntento(rutinaEsParcial ? RESULTADO.OK_PARCIAL : RESULTADO.OK, { input: candidato, stopReason, usage });
-        break;
-      }
-
-      errores = erroresIntento;
-      motivoFalloFinal = RESULTADO.VALIDACION_FALLIDA;
-      registrarIntento(RESULTADO.VALIDACION_FALLIDA, { input: candidato, stopReason, errores: erroresIntento, usage });
-
-      if (intento < INTENTOS_MAXIMOS && toolUseId) {
-        // Retroalimentación real para el siguiente intento, usando el
-        // `candidato` SIN traducir (con sus referencias numéricas
-        // originales) para que el modelo reconozca su propia respuesta.
-        mensajesConversacion.push({
-          role: "assistant",
-          content: [{ type: "tool_use", id: toolUseId, name: "generar_rutina", input: candidato }],
-        });
-        mensajesConversacion.push({
-          role: "user",
-          content: [{
-            type: "tool_result",
-            tool_use_id: toolUseId,
-            content: `Tu rutina anterior no es válida por lo siguiente:\n${erroresIntento.map((e) => `- ${e.texto}`).join("\n")}\n` +
-              `Corrige ESTOS problemas específicos y vuelve a llamar a "generar_rutina" con una rutina completa y válida. ` +
-              `No repitas la misma referencia de ejercicio inválida ni la misma contraindicación.`,
-          }],
-        });
-      }
-    }
+    const intentos = await ejecutarIntentos({
+      mensajes: mensajesConversacion,
+      llamarModelo: (mensajes) => llamarClaude(systemPrompt, mensajes),
+      evaluar,
+      statusErrorApi: (err) => (err instanceof ErrorApiModelo ? err.status : null),
+      registrar: (d) => {
+        diagnostico.intentos.push(d);
+        log("intento", { ...d });
+      },
+    });
+    const rutina = intentos.resultado;
+    const rutinaEsParcial = intentos.parcial;
+    const motivoFalloFinal = intentos.motivoFallo;
+    const errores: ErrorValidacion[] = intentos.errores;
 
     if (!rutina) {
       // Nunca se expone al usuario normal el detalle técnico como única
       // explicación — solo un mensaje entendible más un `codigo` para que
-      // el frontend elija su propio texto amigable. `codigo` conserva sus
-      // valores previos (RESPUESTA_TRUNCADA / VALIDACION_FALLIDA) para no
-      // romper al cliente; el motivo exacto va en `diagnostico.fallo`.
+      // el frontend elija su propio texto amigable. `codigo` es el motivo
+      // real: "RESPUESTA_TRUNCADA" SOLO para un truncado real por
+      // max_tokens; los fallos de forma conservan su propio código
+      // (DIAS_AUSENTES, SIN_TOOL_INPUT, DIAS_DEGENERADOS).
       if (motivoFalloFinal === RESULTADO.ERROR_API_MODELO) {
         return responder(502, {
           error: "El servicio de generación no respondió correctamente.",
@@ -654,7 +593,9 @@ Deno.serve(async (req) => {
           detalles: errores.map((e) => e.texto),
         }, motivoFalloFinal);
       }
-      const codigo = motivoFalloFinal === RESULTADO.VALIDACION_FALLIDA ? "VALIDACION_FALLIDA" : "RESPUESTA_TRUNCADA";
+      const codigo = motivoFalloFinal === RESULTADO.TRUNCADO_MAX_TOKENS
+        ? "RESPUESTA_TRUNCADA"
+        : (motivoFalloFinal ?? RESULTADO.VALIDACION_FALLIDA);
       return responder(422, {
         error: "No pudimos construir una rutina válida con estas restricciones.",
         codigo,

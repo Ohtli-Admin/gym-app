@@ -873,7 +873,7 @@ async function guardarPerfil() {
 // esos detalles técnicos sí quedan en consola para depurar.
 function mensajeErrorGeneracionAmigable(cuerpoError) {
   const codigo = cuerpoError?.codigo;
-  if (codigo === 'RESPUESTA_TRUNCADA' || codigo === 'VALIDACION_FALLIDA') {
+  if (['RESPUESTA_TRUNCADA', 'VALIDACION_FALLIDA', 'DIAS_AUSENTES', 'SIN_TOOL_INPUT', 'DIAS_DEGENERADOS'].includes(codigo)) {
     return 'No pudimos construir una rutina válida con estas restricciones. '
       + 'Tu información se conserva; intenta ajustar la rutina o revisar las restricciones activas.';
   }
