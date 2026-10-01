@@ -96,20 +96,22 @@ final state (wording fix included).
 **Depends on**: Phase 2 and Phase 3 both complete (the test must cover the final wording and should be run
 against the branch state that would actually be proposed for merge).
 
-- [ ] T009 [US1] Product owner generates a Calistenia session in production with at least one injury
+- [x] T009 [US1] Product owner generates a Calistenia session in production with at least one injury
   declared in Perfil; confirm exclusion and restriction-reporting behavior per `quickstart.md` step 2.2.
-- [ ] T010 [US1] Product owner navigates away from and back to the session screen; confirm the session is
-  restored, not regenerated or lost, per `quickstart.md` step 2.3.
-- [ ] T011 [US1] Product owner generates Calistenia 2-3 more times; confirm exercise variety across
-  generations per `quickstart.md` step 2.4.
-- [ ] T012 [US1] Product owner generates at least one Fuerza, one Core, and one Cardio routine; confirm no
-  regression from current production behavior per `quickstart.md` step 2.5.
-- [ ] T013 [US1] Record pass/fail verdicts for T009-T012 in
-  `tasks/review/GA-006-exercise-library-provider-v0.1.md` per `quickstart.md` step 5.
+  **PASS** — restrictions applied and explained on screen.
+- [x] T010 [US1] Product owner navigates away from and back to the session screen; confirm the session is
+  restored, not regenerated or lost, per `quickstart.md` step 2.3. **PASS** (minor UX wording finding,
+  non-blocking: "Crear sesión" button resumes an existing session rather than creating a new one).
+- [x] T011 [US1] Product owner generates Calistenia 2-3 more times; confirm exercise variety across
+  generations per `quickstart.md` step 2.4. **PASS** — "cada generación cambió ejercicios".
+- [x] T012 [US1] Product owner generates at least one Fuerza, one Core, and one Cardio routine; confirm no
+  regression from current production behavior per `quickstart.md` step 2.5. **PASS**.
+- [x] T013 [US1] Record pass/fail verdicts for T009-T012 in
+  `tasks/review/GA-006-exercise-library-provider-v0.1.md` per `quickstart.md` step 5. Also recorded:
+  explicit verification that physical restrictions are per-user profile data, never global/hardcoded, and
+  never auto-expiring, per Constitution Principle IV.
 
-**Checkpoint**: All four scenarios have a recorded verdict. If any fail, stop and treat as a blocking
-finding per spec.md's Edge Cases — do not proceed to Phase 5 until resolved or explicitly accepted by the
-product owner.
+**Checkpoint**: All four scenarios passed. No blocking findings — proceeding to Phase 5.
 
 ---
 

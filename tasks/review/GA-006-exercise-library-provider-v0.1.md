@@ -281,10 +281,51 @@ exercises. The plan note explains how to handle hold-type exercises.
   banners and the Perfil relabel need the manual retest.
 
 **Risks:**
-- The relabelled Perfil field is still the column the Edge Functions
+- ~~The relabelled Perfil field is still the column the Edge Functions
   describe to the LLM as a "condición médica real". Users may now write
   milder things there, which those generators will treat conservatively.
-  Their code is unchanged.
+  Their code is unchanged.~~ **Resolved** — see "Manual browser acceptance"
+  below (specs/001-ga006-closure, FR-006): the Edge Function prompt text was
+  updated to describe the field consistently regardless of wording.
 - The prepared/active session is per browser (`localStorage`), so it doesn't
   sync across devices.
 - Restriction coverage is limited by the Library metadata described above.
+
+---
+
+## Manual browser acceptance (2026-10-01) — DONE
+
+Performed by the product owner directly against production Supabase, per
+`specs/001-ga006-closure/spec.md` User Story 1 (FR-001–FR-005). All four
+scenarios pass:
+
+1. **Injury exclusion + restriction reporting (FR-001, FR-002)**: PASS. With
+   hombro declared in Perfil, Calistenia generation explicitly stated which
+   restrictions it applied and what it took into account — confirmed by the
+   product owner reading the on-screen explanation directly, not inferred.
+2. **Session persistence across navigation (FR-003)**: PASS. Leaving and
+   returning to the screen preserves the prepared/active session; it is not
+   regenerated or lost. (The "Crear sesión" button label is misleading when a
+   session already exists — it resumes rather than creates — noted as a minor
+   wording finding, not a functional defect, not blocking.)
+3. **Variety across repeated generations (FR-004)**: PASS. Confirmed:
+   "cada generación cambió ejercicios" — exercise lists differ between
+   generations rather than repeating the same set.
+4. **Fuerza/Core/Cardio unaffected (FR-005)**: PASS. Product owner confirmed
+   the rest continues to generate correctly, unchanged from before this
+   feature.
+
+**Also explicitly confirmed during this pass**: physical restrictions
+(lesiones/condiciones_medicas) are per-user profile data — read from and
+written to the product owner's own `perfiles` row via the Perfil screen's
+chips — never a global or hardcoded configuration applied to other users,
+and never auto-expiring (requires explicit user action to add or remove),
+per Constitution Principle IV. Verified by reading `app.js`'s profile
+load/save code (`perfilForm.lesiones`), not merely asserted.
+
+**Status update**: this task's only remaining blocker — manual browser
+acceptance — is now satisfied. The Perfil-field cross-contamination risk
+(flagged in the previous Result section) was resolved under
+`specs/001-ga006-closure` (FR-006). Remaining step before this task can move
+out of `tasks/review/`: explicit product-owner approval of the
+merge/deploy recommendation (`specs/001-ga006-closure/tasks.md` T014–T016).
