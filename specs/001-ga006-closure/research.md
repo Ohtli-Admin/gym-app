@@ -44,13 +44,25 @@ guaranteed byte-identical to what's already safely running in production — ver
 re-review of logic.
 
 **Alternatives considered**:
-- *Merge the whole branch as-is*: rejected — known regression risk, confirmed by commit-date comparison
-  (reengineering branch's Edge Function commits predate the `grupos_excluidos` deploy).
+- *Merge the whole branch as-is*: rejected at decision time — known regression risk, based on a
+  commit-date comparison (reengineering branch's Edge Function commits appeared to predate the
+  `grupos_excluidos` deploy).
 - *Hand-pick a cherry-picked subset of commits/files*: rejected by the product owner as too effortful and
   error-prone to assemble manually.
 - *Port `grupos_excluidos` onto the reengineering branch's Edge Function files instead of restoring
   `main`'s*: rejected — this would re-derive logic that already exists and is already verified in
-  production; restoring the proven files is strictly safer than re-implementing them.
+  production.
+
+**Correction found during T005–T008 (implementation)**: `main`'s git history does not contain
+`supabase/functions/` at all — the Edge Functions were never versioned there, only deployed directly. So
+there was no `main` version to restore from. Fetching the actually-deployed source from Supabase
+(`generate-routine` v18, `regenerate-day` v8) and diffing it against the merged `integration/ga006-to-main`
+branch showed `diagnostico.ts` and `reintentos.ts` are byte-identical to production, and both `index.ts`
+files differ only by this feature's own FR-006 wording change. The premise that this branch's Edge
+Functions predated the `grupos_excluidos` fix was stale: the product owner's local Claude Code session had
+already synced them (as part of the preserved WIP work in commit `0e56bd5`) before this feature began. **No
+file restoration was needed or performed** — the "restore" step in the mechanism described above turned out
+to be a no-op, verified rather than assumed.
 
 ## Decision 3: Manual test environment (FR-008)
 

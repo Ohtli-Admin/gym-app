@@ -41,31 +41,32 @@ Performed by the product owner, per the FR-008 decision in `research.md`. Steps:
 
 ## 3. Prepare the integration branch (FR-007) — does not merge to `main`
 
+**Important (found during execution, not assumed up front)**: `main`'s git history never contained
+`supabase/functions/` — the Edge Functions are deployed directly to Supabase and were never versioned on
+`main`. There is no `main` version of the 4 safety-relevant files to "restore," so verification is done
+against the actually-deployed Supabase source, fetched directly (`mcp__Supabase__get_edge_function` or
+equivalent), not against git.
+
 ```
-git fetch origin main reengineering/gymapp-2-core
+git fetch origin refs/heads/reengineering/gymapp-2-core   # do NOT rely on a possibly-stale
+                                                            # refs/remotes/origin/... tracking ref;
+                                                            # fetch the exact branch and use FETCH_HEAD
 git checkout -b integration/ga006-to-main origin/main
-git merge origin/reengineering/gymapp-2-core
-# resolve any merge conflicts normally, then restore the 4 safety-relevant files to main's versions:
-git checkout origin/main -- supabase/functions/generate-routine/index.ts \
-                            supabase/functions/generate-routine/diagnostico.ts \
-                            supabase/functions/generate-routine/reintentos.ts \
-                            supabase/functions/regenerate-day/index.ts
-git status   # confirm only the intended restore is staged
-git commit -m "chore: prepare integration branch — merge reengineering/gymapp-2-core, preserve main's Edge Function safety fix"
+git merge FETCH_HEAD --no-edit
+```
+
+Then fetch the real deployed source of `generate-routine` (v18) and `regenerate-day` (v8) from Supabase and
+diff it against the merged branch's 4 files. If they differ only by this feature's own FR-006 wording
+change (or are byte-identical where no FR-006 change applies, i.e. `diagnostico.ts`/`reintentos.ts`), no
+restoration is needed — push as-is:
+
+```
 git push origin integration/ga006-to-main
 ```
 
-Expected result: `integration/ga006-to-main` contains everything from `reengineering/gymapp-2-core`
-(including GA-006 and this feature's own wording fix applied on top — see step 4) except that the 4 named
-files are byte-identical to `main`'s current versions. Verify with:
-
-```
-git diff origin/main..integration/ga006-to-main -- supabase/functions/generate-routine/index.ts supabase/functions/generate-routine/diagnostico.ts supabase/functions/generate-routine/reintentos.ts supabase/functions/regenerate-day/index.ts
-```
-
-Expected: no output (zero diff) for `diagnostico.ts`/`reintentos.ts`/the merged `regenerate-day/index.ts`'s
-validation logic. `generate-routine/index.ts` and `regenerate-day/index.ts` will show a diff limited to
-the FR-006 wording change applied in step 4 below, nothing else.
+If the diff instead shows the merged branch's validation logic (not just wording) differs from what's
+actually deployed, STOP and treat it as a blocking finding per Constitution Principle I (deployed state
+disagreeing with what was assumed is a finding to record, not silently fix) before pushing anything.
 
 **Note**: this branch is the artifact presented for human approval per FR-009/Constitution Principle II.
 Nothing in this quickstart merges it into `main` or deploys it.
