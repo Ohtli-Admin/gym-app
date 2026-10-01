@@ -97,8 +97,12 @@ ${otrosDias || "No hay otros días definidos todavía."}
 Reglas obligatorias:
 - Si el usuario reporta una lesión, NUNCA incluyas un ejercicio cuyo campo
   "contraindicaciones" contenga esa lesión.
-- Si "condiciones_medicas" no está vacío, es una condición médica real, no
-  una preferencia. Razona así: (1) identifica qué PATRONES DE MOVIMIENTO
+- Si "condiciones_medicas" no está vacío, TRÁTALO como una condición médica
+  real, nunca como una preferencia — incluso si está redactado de forma breve
+  o informal. Este mismo campo también se usa en otra parte de la app con una
+  etiqueta más suave ("lesiones, molestias o limitaciones"), así que una
+  frase corta o coloquial no es evidencia de severidad baja. Razona así:
+  (1) identifica qué PATRONES DE MOVIMIENTO
   (no ejercicios sueltos) cargan la estructura afectada, (2) decide TODOS
   los valores de "grupo_muscular" (copiados EXACTOS del catálogo de arriba)
   que corresponden a esos patrones para este usuario, y ponlos en

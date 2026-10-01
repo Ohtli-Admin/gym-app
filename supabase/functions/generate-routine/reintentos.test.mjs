@@ -67,7 +67,7 @@ test('2. DIAS_AUSENTES produces corrective tool_result context, replaying the or
   assert.equal(bloque.tool_use_id, 'toolu_1');
   assert.equal(bloque.is_error, true);
   assert.match(bloque.content, /omitió el campo obligatorio `dias`/);
-  assert.match(bloque.content, /AMBOS campos `dias`/);
+  assert.match(bloque.content, /`grupos_excluidos`, `dias`/);
   assert.match(bloque.content, /No respondas con texto fuera de la llamada/);
   assert.deepEqual(malformado, original, 'malformed input must not be mutated');
   assert.equal(registros[0].resultado, RESULTADO.DIAS_AUSENTES);

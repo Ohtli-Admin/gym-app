@@ -198,9 +198,14 @@ ${JSON.stringify(catalogo)}
 Reglas obligatorias:
 - Si el usuario reporta una lesión, NUNCA incluyas un ejercicio cuyo campo
   "contraindicaciones" contenga esa lesión.
-- Si "condiciones_medicas" no está vacío, es una condición médica REAL y
-  ESPECÍFICA, no una preferencia — sigue este razonamiento ANTES de elegir
-  cualquier ejercicio para la zona afectada:
+- Si "condiciones_medicas" no está vacío, TRÁTALO como una condición médica
+  real y específica, nunca como una preferencia — incluso si está redactado
+  de forma breve o informal. Este mismo campo también se usa en otra parte de
+  la app con una etiqueta más suave ("lesiones, molestias o limitaciones"),
+  así que el usuario puede haber escrito algo corto o coloquial sin que eso
+  signifique que la restricción sea menor: una frase breve no es evidencia de
+  severidad baja. Sigue este razonamiento ANTES de elegir cualquier ejercicio
+  para la zona afectada:
   1. Identifica la estructura/articulación afectada y qué PATRONES DE
      MOVIMIENTO (no ejercicios individuales) la cargan directamente. Ej.: una
      lesión de manguito rotador o inestabilidad acromioclavicular se carga con
