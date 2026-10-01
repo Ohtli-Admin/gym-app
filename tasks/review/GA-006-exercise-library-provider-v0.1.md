@@ -1,7 +1,8 @@
 # [GA-006] Gym Exercise Library Provider v0.1
 
-- **Status:** REVIEW
-- **Agent/Owner:** Claude Opus 5.5
+- **Status:** DONE — merged to `main` 2026-10-01
+- **Agent/Owner:** Claude Opus 5.5 (implementation), Claude Sonnet 5 (closure via
+  `specs/001-ga006-closure`)
 
 ## Objective
 
@@ -329,3 +330,29 @@ acceptance — is now satisfied. The Perfil-field cross-contamination risk
 `specs/001-ga006-closure` (FR-006). Remaining step before this task can move
 out of `tasks/review/`: explicit product-owner approval of the
 merge/deploy recommendation (`specs/001-ga006-closure/tasks.md` T014–T016).
+
+---
+
+## Closure (2026-10-01)
+
+The product owner reviewed the merge/deploy recommendation (T014: what
+`integration/ga006-to-main` contains, what it explicitly excludes, and the
+verified-zero-diff claim on `diagnostico.ts`/`reintentos.ts`) and gave
+explicit approval: **"apruebo"**.
+
+`integration/ga006-to-main` was merged into `main` and pushed
+(`8bcfdd1..0914956`). A second gap was then found and closed: the manual
+test-results documentation and the research/quickstart corrections
+(`41586da`, `c38bb52`) had been committed directly to
+`reengineering/gymapp-2-core` after the integration branch was cut, so they
+were not yet on `main`. Since `main` was still a direct ancestor of
+`reengineering/gymapp-2-core`, that branch was fast-forwarded into `main`
+(`0914956..c38bb52`) rather than merged again, keeping history linear.
+`main` now carries the full, documented GA-006 closure.
+
+**Explicitly not yet done, per the approval request's own scope**: actual
+production deployment — redeploying `generate-routine` and `regenerate-day`
+to Supabase so the FR-006 wording fix takes live effect, and/or promoting
+the Vercel build of this code to the production domain. The approval
+covered the `main` merge; deploy is a separate action and needs its own
+explicit go-ahead before it happens, per `AGENTS.md`'s approval boundary.

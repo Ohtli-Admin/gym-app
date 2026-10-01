@@ -122,13 +122,20 @@ merge or deploy happens without it, per Constitution Principle II.
 
 **Depends on**: Phase 4 complete (T013) with no unresolved blocking findings.
 
-- [ ] T014 [US3] Write a short merge/deploy recommendation (what's in `integration/ga006-to-main`, what's
+- [x] T014 [US3] Write a short merge/deploy recommendation (what's in `integration/ga006-to-main`, what's
   explicitly excluded, and the verified-zero-diff claim from T008) for the product owner to review.
-- [ ] T015 [US3] Record the product owner's explicit approval or rejection of the merge/deploy
-  recommendation. If approved, note that executing the merge/deploy itself is a follow-up action outside
-  this feature's scope (per spec.md's Assumptions). If rejected, document why and stop.
-- [ ] T016 [US3] Update `tasks/review/GA-006-exercise-library-provider-v0.1.md`'s `Status` field out of
-  `REVIEW` only once T013 and T015 are both recorded with a positive outcome.
+  Presented in chat; covered the `main` merge only, explicitly separating it from actual production
+  deployment.
+- [x] T015 [US3] Record the product owner's explicit approval or rejection of the merge/deploy
+  recommendation. **Approved** — verbatim: "apruebo". Executing the merge was done as a follow-up action
+  (see T016 note); production deployment (Edge Function redeploy, Vercel promotion) remains a separate,
+  not-yet-requested action per spec.md's Assumptions.
+- [x] T016 [US3] Update `tasks/review/GA-006-exercise-library-provider-v0.1.md`'s `Status` field out of
+  `REVIEW` only once T013 and T015 are both recorded with a positive outcome. Status set to
+  `DONE — merged to main 2026-10-01`; closure note appended recording the merge (`8bcfdd1..0914956`) and
+  the follow-up fast-forward (`0914956..c38bb52`) that brought the manual-test documentation and research
+  corrections into `main` as well, since those had landed on `reengineering/gymapp-2-core` after the
+  integration branch was cut.
 
 **Checkpoint**: GA-006 either has a recorded merge/deploy approval and updated status, or a clearly
 documented reason it remains in REVIEW.
