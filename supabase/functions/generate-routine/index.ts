@@ -14,25 +14,36 @@
 //    tokens).
 // 4. Le pide la rutina a Claude, forzando salida estructurada (tool use).
 // 5. Valida la respuesta contra el catálogo (IDs existen, equipo
-//    disponible, series en rango) y contra 'lesiones' vía el campo
-//    'contraindicaciones' del catálogo.
+//    disponible, series en rango), contra 'lesiones' vía el campo
+//    'contraindicaciones' del catálogo, Y contra los `grupos_excluidos`
+//    que el propio modelo declaró (ver más abajo).
 // 6. Si es válida, la guarda en 'rutinas' y 'rutina_ejercicios', y desactiva
 //    cualquier rutina anterior del usuario.
 //
 // LÍMITES DE SEGURIDAD — LEER ANTES DE ASUMIR QUE ESTO ES "VALIDACIÓN
 // MÉDICA DETERMINISTA":
-// - El paso 5 es determinista en código (no depende de que el modelo "diga
-//   la verdad"), pero solo es tan bueno como los datos que valida. A la
-//   fecha de este comentario, 0 de 1,464 filas de `ejercicios` tienen
-//   `contraindicaciones` poblado (ver docs/LEGACY_EXERCISE_CROSSWALK.md).
-//   Es decir: hoy, este chequeo es una red de seguridad ESTRUCTURAL para
-//   cuando ese dato exista, no una garantía ACTIVA de que la rutina evita
-//   las lesiones/condiciones reales del usuario.
+// - El paso 5 tiene DOS capas deterministas ahora:
+//   (a) `contraindicaciones` en el catálogo — a la fecha de este comentario
+//       0 de 1,464 filas de `ejercicios` lo tienen poblado, así que hoy es
+//       una red de seguridad para cuando ese dato exista, no una garantía
+//       activa por sí sola.
+//   (b) `grupos_excluidos` — el modelo debe declarar, ANTES de elegir
+//       ejercicios, qué valores exactos de `grupo_muscular` decidió excluir
+//       por la condición médica de ESTE usuario (ver ROUTINE_TOOL). El
+//       código (no el modelo) verifica que NINGÚN ejercicio elegido
+//       pertenezca a un grupo que el propio modelo declaró excluir — si
+//       eso pasa, la respuesta se rechaza y se reintenta con el error
+//       explícito. Esto SÍ es determinista y generaliza a cualquier lesión
+//       que el usuario describa (no depende de una lista de zonas escrita
+//       a mano por el desarrollador), pero depende de que el modelo haya
+//       sido honesto al declarar `grupos_excluidos` — no es una prueba de
+//       que declaró TODOS los grupos que debería haber excluido, solo de
+//       que respetó lo que sí declaró.
 // - El campo libre `condiciones_medicas` nunca es una entrada verificada
-//   de forma determinista — es contexto que se le pide al modelo respetar
-//   como mejor esfuerzo (ver `buildSystemPrompt`). Esta función no
-//   diagnostica, no infiere recuperación, y NO produce una prescripción de
-//   rehabilitación real: como mucho, adapta una rutina de fuerza/abdomen
+//   de forma determinista en cuanto a SU CONTENIDO CLÍNICO — es contexto
+//   que se le pide al modelo interpretar como mejor esfuerzo. Esta función
+//   no diagnostica, no infiere recuperación, y NO produce una prescripción
+//   de rehabilitación real: como mucho, adapta una rutina de fuerza/abdomen
 //   normal evitando los patrones de movimiento que el usuario describió.
 // - "La rutina generada" nunca debe describirse ni mostrarse al usuario
 //   como médicamente validada. Ver AGENTS.md ("GymApp no diagnostica
@@ -70,29 +81,32 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Esta SÍ hay que configurarla a mano como "secret" (ver pasos aparte):
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 
-// IMPORTANT: `dias` is declared BEFORE `resumen` deliberately. Claude
-// emits structured tool-call JSON fields in the order the schema declares
-// them; `resumen` is a free-text field this prompt demands be clinically
-// detailed (see the "condiciones_medicas" reasoning block below), which
-// can legitimately run long for a real, complex medical input. With
-// `resumen` first, a verbose response risks exhausting max_tokens BEFORE
-// `dias` (the actual routine — the part that matters) is ever written,
-// producing a response with no usable content at all. Putting `dias`
-// first means the routine itself is captured even if `resumen` later gets
-// cut short. This was the confirmed root cause of routines failing
-// validation twice in a row on real, lengthy medical/restriction input —
-// see this file's git history / GA-005 defect report for the analysis.
+// ORDEN DE CAMPOS DELIBERADO — Claude emite los campos de una tool call en
+// el orden en que el schema los declara:
+// 1. `grupos_excluidos` va PRIMERO a propósito: es corto (unas cuantas
+//    palabras del catálogo), así que casi no consume presupuesto de
+//    tokens, y forzar que el modelo lo declare ANTES de elegir ejercicios
+//    lo compromete con esa lista antes de generar `dias` — es más difícil
+//    que la contradiga después si ya la escribió primero.
+// 2. `dias` va segundo: es la parte que de verdad importa (la rutina).
+// 3. `resumen` va AL FINAL a propósito: es texto libre que el prompt pide
+//    mantener breve, pero puede alargarse en casos médicos complejos. Si
+//    fuera antes de `dias`, una respuesta verbosa arriesgaría agotar
+//    max_tokens ANTES de escribir la rutina — esto fue la causa confirmada
+//    de fallos de validación dos veces seguidas en entradas médicas reales
+//    y extensas (ver GA-005 en el historial de este archivo).
 //
-// `strict: true` (Anthropic "strict tool use", documented as supported on
-// claude-sonnet-5): the API constrains sampling so `input` always matches
-// this schema — in particular `dias` and `resumen` are always present.
-// This is the direct fix for the real DIAS_AUSENTES failure (tool_use with
-// no `dias`). Strict mode requires `additionalProperties: false` on every
-// object and does NOT support `maxItems`, so the old `alternativas`
-// `maxItems: 2` was removed from the schema and the cap of 2 is enforced in
-// code instead (see `evaluar` below). A truncated response
-// (stop_reason=max_tokens) can still be incomplete — strict does not change
-// that — and reintentos.ts still handles every shape failure defensively.
+// `strict: true` (Anthropic "strict tool use", soportado en claude-sonnet-5):
+// la API restringe el muestreo para que `input` siempre cumpla este schema
+// — en particular, `dias`, `grupos_excluidos` y `resumen` siempre están
+// presentes como claves (aunque `grupos_excluidos` puede ser `[]`). Esto es
+// el fix directo del fallo real DIAS_AUSENTES (tool_use sin `dias`). El modo
+// estricto exige `additionalProperties: false` en cada objeto y NO admite
+// `maxItems`, así que el límite de 2 alternativas se aplica en código (ver
+// `evaluar` más abajo), no en el schema. Una respuesta truncada
+// (stop_reason=max_tokens) puede seguir siendo incompleta — strict no
+// cambia eso — y reintentos.ts sigue manejando toda falla de forma de
+// manera defensiva.
 const ROUTINE_TOOL = {
   name: "generar_rutina",
   description: "Genera una rutina de entrenamiento estructurada por días.",
@@ -100,6 +114,12 @@ const ROUTINE_TOOL = {
   input_schema: {
     type: "object",
     properties: {
+      grupos_excluidos: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Valores EXACTOS de 'grupo_muscular' (copiados tal cual del catálogo recibido, sin traducir ni parafrasear) que decidiste excluir POR COMPLETO de esta rutina por una lesión o condición médica reportada por el usuario. Tu elección de ejercicios en 'dias' será verificada en código contra esta misma lista: si incluyes un ejercicio de un grupo que tú mismo pusiste aquí, tu respuesta será rechazada. Si el usuario no reportó ninguna lesión/condición relevante para ningún grupo muscular, deja este arreglo vacío [].",
+      },
       dias: {
         type: "array",
         items: {
@@ -140,7 +160,7 @@ const ROUTINE_TOOL = {
       },
       resumen: { type: "string" },
     },
-    required: ["dias", "resumen"],
+    required: ["grupos_excluidos", "dias", "resumen"],
     additionalProperties: false,
   },
 };
@@ -189,29 +209,38 @@ Reglas obligatorias:
      cirugía lumbar con material (tornillos, fusión) se carga con peso muerto
      convencional pesado, sentadilla con carga axial alta, flexión de tronco
      cargada, y rotación de tronco cargada.
-  2. EXCLUYE POR COMPLETO esos patrones de movimiento en la zona afectada —
-     no los "aligeres", exclúyelos del todo. "Cuidado" no es una categoría de
-     ejercicio válida aquí.
-  3. Si la condición suena aguda, inflamatoria, post-quirúrgica reciente, o
+  2. Con base en eso, decide TODOS los valores de "grupo_muscular" (tal cual
+     aparecen en el catálogo de arriba, copiados exactos) que corresponden a
+     esos patrones de movimiento para ESTE usuario, y ponlos en el campo
+     "grupos_excluidos" de tu respuesta — ANTES de elegir ningún ejercicio.
+     Esta declaración se usa para verificar tu propia rutina en código: si
+     luego eliges un ejercicio de un grupo que pusiste aquí, tu respuesta
+     completa será rechazada y tendrás que corregirla. Sé exhaustivo: es
+     mejor excluir un grupo de más que dejar pasar uno que sí carga la zona
+     lesionada.
+  3. EXCLUYE POR COMPLETO esos grupos/patrones de movimiento al elegir
+     ejercicios — no los "aligeres", exclúyelos del todo. "Cuidado" no es una
+     categoría de ejercicio válida aquí.
+  4. Si la condición suena aguda, inflamatoria, post-quirúrgica reciente, o
      de inestabilidad (tendinopatía, cirugía con material, inestabilidad
      articular), reduce el volumen general de esa zona un 30-50% respecto a
      lo normal, y prioriza estabilización y control de rango de movimiento
      sobre progresión de carga — aunque la rutina resultante sea menos
      intensa de lo que sería sin la condición.
-  4. NUNCA sacrifiques esto por "completar el día" — si el catálogo no tiene
+  5. NUNCA sacrifiques esto por "completar el día" — si el catálogo no tiene
      suficientes ejercicios seguros para esa zona, incluye menos ejercicios
      en vez de forzar uno riesgoso. Si de verdad no hay suficientes
      ejercicios seguros para llenar "dias_disponibles" días completos,
      genera MENOS DÍAS en vez de forzar contenido de relleno — un plan de 2
      días bien construido es mejor que uno de 4 días con ejercicios
      riesgosos o inventados.
-  5. IMPORTANTE — límites de esta herramienta: NO eres un generador de
+  6. IMPORTANTE — límites de esta herramienta: NO eres un generador de
      protocolos de rehabilitación, y este texto libre no es un diagnóstico
      que puedas verificar. No inventes un "plan de rehabilitación" a partir
      de él. Tu única tarea aquí es adaptar una rutina de fuerza/abdomen
      NORMAL evitando por completo los patrones de movimiento de la zona
      afectada — nada más.
-  6. En "resumen", sé BREVE (máximo 3 oraciones) sobre qué excluiste y por
+  7. En "resumen", sé BREVE (máximo 3 oraciones) sobre qué excluiste y por
      qué — una frase basta, ej. "Se excluyó todo empuje sobre la cabeza y
      press pesado por la condición de hombro reportada; el trabajo de
      hombro se limita a estabilización de baja carga." NO repitas el texto
@@ -219,8 +248,10 @@ Reglas obligatorias:
      puede truncar tu respuesta antes de terminar "dias", que es la parte
      que realmente importa. Cierra siempre recordando que esto no sustituye
      la valoración de un médico o fisioterapeuta.
+- Si el usuario NO tiene ninguna lesión/condición médica relevante, deja
+  "grupos_excluidos" como un arreglo vacío [].
 - Distribuye los ejercicios en tantos días como "dias_disponibles" indique el
-  usuario (o menos, por la regla 4 anterior si aplica), evitando entrenar el
+  usuario (o menos, por la regla 5 anterior si aplica), evitando entrenar el
   mismo grupo muscular en días consecutivos cuando sea posible. NUNCA generes
   MÁS días de los que "dias_disponibles" indica.
 ${reglaVolumen}
@@ -229,11 +260,11 @@ ${reglaVolumen}
   pensadas para cuando el equipo esté ocupado, el usuario no domine la
   técnica, o no pueda hacerlo por alguna limitación física del momento.
   Cada alternativa debe: (a) trabajar el mismo grupo muscular o uno muy
-  cercano, (b) respetar las mismas lesiones y equipo disponible del
-  usuario, (c) traer un "motivo" breve (menos de 10 palabras) explicando
-  cuándo usarla, ej. "si la polea está ocupada" o "si te molesta el
-  hombro". Si no hay una alternativa razonable, deja el arreglo vacío — no
-  inventes una mala solo por rellenar.
+  cercano, (b) respetar las mismas lesiones, "grupos_excluidos" y equipo
+  disponible del usuario, (c) traer un "motivo" breve (menos de 10 palabras)
+  explicando cuándo usarla, ej. "si la polea está ocupada" o "si te molesta
+  el hombro". Si no hay una alternativa razonable, deja el arreglo vacío —
+  no inventes una mala solo por rellenar.
 - Si el mensaje del usuario incluye "intencion_hoy", es lo que el usuario
   escribió HOY con sus propias palabras sobre qué necesita o qué cambió
   (ej. poco tiempo, un énfasis, molestia en una zona, una meta próxima).
@@ -502,12 +533,12 @@ Deno.serve(async (req) => {
     // A veces (sobre todo con perfiles complejos: varias metas + lesiones +
     // condición médica detallada) el modelo puede degenerar en una
     // respuesta sin sentido, o la respuesta puede fallar la validación
-    // determinista (ID inválido, contraindicación, más días de los
-    // pedidos). En vez de reintentar a ciegas con la MISMA petición
-    // (que tiende a fallar exactamente igual dos veces), el intento 2
-    // recibe retroalimentación real: qué falló específicamente, vía un
-    // turno de conversación `tool_result` — Claude ve su propio intento
-    // anterior y el motivo exacto del rechazo, no solo "inténtalo de
+    // determinista (ID inválido, contraindicación, grupo excluido violado,
+    // más días de los pedidos). En vez de reintentar a ciegas con la MISMA
+    // petición (que tiende a fallar exactamente igual dos veces), el
+    // intento 2 recibe retroalimentación real: qué falló específicamente,
+    // vía un turno de conversación `tool_result` — Claude ve su propio
+    // intento anterior y el motivo exacto del rechazo, no solo "inténtalo de
     // nuevo". Esto NUNCA relaja la validación en sí (sigue siendo
     // determinista y exactamente igual de estricta); solo hace que el
     // reintento tenga una razón real de salir distinto.
@@ -661,6 +692,7 @@ Deno.serve(async (req) => {
     return responder(200, {
       rutina: nuevaRutina,
       dias: rutina.dias,
+      grupos_excluidos: rutina.grupos_excluidos || [],
       parcial: rutinaEsParcial,
       codigo: rutinaEsParcial ? "RUTINA_PARCIAL_MENOS_DIAS" : null,
       dias_solicitados: perfilParaPrompt.dias_disponibles,

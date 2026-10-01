@@ -8,7 +8,8 @@
 import { mount } from './today-panel.mjs';
 import { adaptFuerzaDay, adaptAbdomenDay, adaptCardioDay } from './legacy-adapter.mjs';
 import { buildTodayOverview } from './today-coordinator.mjs';
-import { createSessionFromItems, setActiveSession, getActiveSession } from './workout-session.mjs';
+import { createSessionFromItems, setActiveSession, getActiveSession, getSessionSlots } from './workout-session.mjs';
+import { getResumeState } from './session-builder.mjs';
 import { readTodayIntent, saveTodayIntent, TODAY_INTENT_MAX_LENGTH } from './today-intent.mjs';
 import {
   SPECIAL_TRAINING_MODES,
@@ -26,11 +27,10 @@ function startSessionFromItems(items, planId) {
   setActiveSession(createSessionFromItems(items, { planId }));
 }
 
-// True while an on-demand session (Calistenia / Entrenamiento especial)
-// is started but not finished — used by Entrenamiento to offer "Continuar".
+// True while a session is started but not finished (the store only ever
+// returns unfinished sessions).
 function hasActiveSession() {
-  const session = getActiveSession();
-  return Boolean(session && !session.finishedAt);
+  return Boolean(getActiveSession());
 }
 
 window.GymAppTodayExperience = {
@@ -41,6 +41,14 @@ window.GymAppTodayExperience = {
   buildTodayOverview,
   startSessionFromItems,
   hasActiveSession,
+  // { active, activeOrigin, preparedOrigin } for the Entrenamiento hub.
+  getResumeState: () => getResumeState(getSessionSlots()),
+  // The Entrenamiento especial text stored with a prepared routine (to
+  // restore that screen after navigation/refresh), or ''.
+  preparedSessionText: (origin) => {
+    const prepared = getSessionSlots().getPrepared();
+    return prepared?.origin === origin ? prepared.sessionContext?.text ?? '' : '';
+  },
   readTodayIntent: () => readTodayIntent(),
   saveTodayIntent: (text) => saveTodayIntent(text),
   TODAY_INTENT_MAX_LENGTH,

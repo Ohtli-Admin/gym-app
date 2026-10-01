@@ -12,6 +12,8 @@
 // choice until a real catalog provider supplies real, storable exercise
 // identity — not merely the fastest one. See README "Logging/persistence".
 
+import { createSessionSlots } from './session-slots.mjs';
+
 // A "session item" is the minimal shape a source of exercises must
 // provide: { exerciseId, name, modality, status, reasons, prescription,
 // estimatedDurationMinutes } — exactly what a Workout Planner plan item
@@ -21,9 +23,13 @@
 // (createSessionFromItems) — see today-coordinator.mjs and
 // legacy-adapter.mjs, which adapt legacy Fuerza/Cardio/Abdomen day data
 // into this exact shape so it can flow through the same session engine.
-export function createSessionFromItems(items, { planId = 'session' } = {}) {
+// `meta` (optional) carries what is needed to explain/restore where the
+// session came from (origin, seed, request, Library snapshot identity);
+// see session-builder.mjs.
+export function createSessionFromItems(items, { planId = 'session', meta = null } = {}) {
   return {
     planId,
+    meta,
     startedAt: Date.now(),
     finishedAt: null,
     currentIndex: 0,
@@ -41,8 +47,8 @@ export function createSessionFromItems(items, { planId = 'session' } = {}) {
   };
 }
 
-export function createSessionFromPlan(plan) {
-  return createSessionFromItems(plan.exercises, { planId: plan.planId });
+export function createSessionFromPlan(plan, { meta = null } = {}) {
+  return createSessionFromItems(plan.exercises, { planId: plan.planId, meta });
 }
 
 export function logSet(session, exerciseIndex, { reps = null, weight = null } = {}) {
@@ -85,49 +91,30 @@ export function buildSessionSummary(session) {
 }
 
 // --- Shared, local-only active-session store -------------------------
-// A module-level cache backed by best-effort localStorage, so the active
-// workout survives both in-app navigation (Hoy <-> Entrenar <-> Progreso)
-// and a page reload. Every localStorage access is wrapped in try/catch —
-// it can throw or be unavailable (private browsing, blocked storage,
-// non-browser test environment) and this must never crash the app; it
-// degrades to in-memory-only for that session in that case.
-const STORAGE_KEY = 'gymapp2.activeSession.v1';
-let cachedSession; // undefined = not loaded from storage yet this session
+// Thin wrappers over the default session-slots instance
+// (session-slots.mjs), kept so existing callers (today-panel.mjs, the
+// browser bridge for Fuerza/Cardio/Core day sessions) don't change. Every
+// call reads/writes storage directly — no module cache — so what survives
+// navigation is exactly what survives a refresh.
+const defaultSlots = createSessionSlots();
 
-function readStorage() {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+export function getSessionSlots() {
+  return defaultSlots;
 }
 
-function writeStorage(session) {
-  try {
-    if (typeof localStorage === 'undefined') return;
-    if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    else localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // best-effort only
-  }
-}
-
+// The resumable (unfinished) session, or null.
 export function getActiveSession() {
-  if (cachedSession === undefined) {
-    cachedSession = readStorage();
-  }
-  return cachedSession;
+  return defaultSlots.getActive();
 }
 
+// Saving a finished session (finishSession() sets finishedAt) moves it out
+// of the resumable slot into "last completed" (summary only).
 export function setActiveSession(session) {
-  cachedSession = session;
-  writeStorage(session);
+  if (session?.finishedAt) defaultSlots.completeActive(session);
+  else defaultSlots.saveActive(session);
   return session;
 }
 
 export function clearActiveSession() {
-  cachedSession = null;
-  writeStorage(null);
+  defaultSlots.clearActive();
 }

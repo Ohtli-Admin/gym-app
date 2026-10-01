@@ -5,12 +5,13 @@
 //
 // Regla clave: cuando el modelo SÍ hizo la llamada a la herramienta (hay
 // tool_use con id e input) pero el input no sirve — falta `dias`, o
-// `dias` no es arreglo, o es absurdo — el reintento recibe
-// retroalimentación explícita vía tool_result, igual que ya ocurría con
-// los errores de validación. Antes ese caso reintentaba "a ciegas" con la
-// misma conversación. Solo el truncado real (stop_reason=max_tokens) y la
-// ausencia total de tool_use siguen reintentando sin corrección: ahí no
-// hay una llamada completa que se pueda reproducir.
+// `dias` no es arreglo, o es absurdo, o VIOLÓ SU PROPIA declaración de
+// `grupos_excluidos` — el reintento recibe retroalimentación explícita vía
+// tool_result, igual que ya ocurría con los errores de validación. Antes
+// ese caso reintentaba "a ciegas" con la misma conversación. Solo el
+// truncado real (stop_reason=max_tokens) y la ausencia total de tool_use
+// siguen reintentando sin corrección: ahí no hay una llamada completa que
+// se pueda reproducir.
 import {
   MAX_DIAS_CORDURA,
   RESULTADO,
@@ -54,7 +55,7 @@ export function mensajeCorreccionForma(input: any, falloForma: string): string {
     problema = "el campo `dias` no es un arreglo de días.";
   }
   return `Tu llamada anterior a "${NOMBRE_HERRAMIENTA}" no es utilizable: ${problema} ` +
-    `Vuelve a llamar a "${NOMBRE_HERRAMIENTA}" con una rutina completa que incluya AMBOS campos \`dias\` (arreglo de días con sus ejercicios) y \`resumen\`. ` +
+    `Vuelve a llamar a "${NOMBRE_HERRAMIENTA}" con una rutina completa que incluya \`grupos_excluidos\`, \`dias\` (arreglo de días con sus ejercicios) y \`resumen\`. ` +
     `No respondas con texto fuera de la llamada a la herramienta.`;
 }
 
@@ -156,8 +157,8 @@ export async function ejecutarIntentos(opts: {
         toolUseId,
         candidato,
         `Tu rutina anterior no es válida por lo siguiente:\n${errores.map((e) => `- ${e.texto}`).join("\n")}\n` +
-          `Corrige ESTOS problemas específicos y vuelve a llamar a "${NOMBRE_HERRAMIENTA}" con una rutina completa y válida. ` +
-          `No repitas la misma referencia de ejercicio inválida ni la misma contraindicación.`,
+          `Corrige ESTOS problemas específicos y vuelve a llamar a "${NOMBRE_HERRAMIENTA}" con una rutina completa y válida — incluyendo \`grupos_excluidos\` actualizado si aplica. ` +
+          `No repitas la misma referencia de ejercicio inválida, la misma contraindicación, ni un ejercicio de un grupo que tú mismo excluiste.`,
         false, // igual que antes de este cambio: sin is_error
       );
     }

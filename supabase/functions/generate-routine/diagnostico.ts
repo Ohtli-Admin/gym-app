@@ -15,6 +15,11 @@ export const ERROR_VALIDACION = {
   DIAS_EXCEDIDOS: "DIAS_EXCEDIDOS",
   EJERCICIO_ID_INVALIDO: "EJERCICIO_ID_INVALIDO",
   CONTRAINDICADO: "CONTRAINDICADO",
+  // El modelo mismo declaró excluir este grupo_muscular (por la lesión/
+  // condición médica del usuario, ver `grupos_excluidos` en ROUTINE_TOOL)
+  // y aun así incluyó un ejercicio de ese grupo — se rechaza en código,
+  // no se confía en que el modelo se autocorrija sin verificación.
+  GRUPO_EXCLUIDO_VIOLADO: "GRUPO_EXCLUIDO_VIOLADO",
   EQUIPO_NO_DISPONIBLE: "EQUIPO_NO_DISPONIBLE",
   SERIES_FUERA_DE_RANGO: "SERIES_FUERA_DE_RANGO",
   RUTINA_SIN_EJERCICIOS: "RUTINA_SIN_EJERCICIOS",
@@ -50,6 +55,15 @@ export function validarRutina(rutina: any, catalogo: any[], perfil: any): ErrorV
   const catalogoPorId = new Map(catalogo.map((e) => [e.exercise_id, e]));
   const lesiones = new Set(perfil.lesiones || []);
   const equipoDisponible = new Set(perfil.equipo_disponible || []);
+  // Grupos que el propio modelo declaró excluir para la condición médica
+  // de ESTE usuario (ver `grupos_excluidos` en ROUTINE_TOOL). Normalizado a
+  // minúsculas/trim para comparar de forma robusta contra `grupo_muscular`
+  // (que viene de un catálogo mixto sin taxonomía limpia).
+  const gruposExcluidos = new Set(
+    (Array.isArray(rutina?.grupos_excluidos) ? rutina.grupos_excluidos : [])
+      .map((g: unknown) => String(g).toLowerCase().trim())
+      .filter(Boolean),
+  );
 
   const dias = rutina?.dias || [];
   if (dias.length === 0) {
@@ -89,6 +103,15 @@ export function validarRutina(rutina: any, catalogo: any[], perfil: any): ErrorV
         errores.push({
           codigo: ERROR_VALIDACION.CONTRAINDICADO,
           texto: `Día ${dia.dia}: '${catEj.nombre}' contraindicado para: ${contraindicado.join(", ")}.`,
+        });
+      }
+      // Este SÍ es un chequeo determinista activo hoy, sin depender de que
+      // `contraindicaciones` esté poblado: compara contra lo que el propio
+      // modelo declaró en ESTA respuesta.
+      if (gruposExcluidos.size > 0 && gruposExcluidos.has(String(catEj.grupo_muscular || "").toLowerCase().trim())) {
+        errores.push({
+          codigo: ERROR_VALIDACION.GRUPO_EXCLUIDO_VIOLADO,
+          texto: `Día ${dia.dia}: '${catEj.nombre}' es del grupo '${catEj.grupo_muscular}', que tú mismo declaraste en 'grupos_excluidos' por la condición médica del usuario — no puede aparecer en la rutina.`,
         });
       }
       if (equipoDisponible.size > 0 && !equipoDisponible.has(catEj.equipo)) {

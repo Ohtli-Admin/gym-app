@@ -5,6 +5,15 @@
 // cubren los OTROS días (para no repetir enfoque), genera únicamente el
 // día pedido, y reemplaza solo esas filas en 'rutina_ejercicios' — el
 // resto de la rutina queda intacto.
+//
+// SEGURIDAD MÉDICA (ver también generate-routine/index.ts): igual que en
+// la generación completa, el modelo debe declarar `grupos_excluidos`
+// (valores exactos de `grupo_muscular`, tomados del catálogo recibido)
+// ANTES de elegir ejercicios, y `validarDia` rechaza en código cualquier
+// ejercicio elegido que pertenezca a un grupo que el propio modelo dijo
+// excluir. Sigue dependiendo de que el modelo declare honestamente — no es
+// diagnóstico ni verificación clínica — pero ya no es "confiar a ciegas"
+// en que respetó el texto libre de `condiciones_medicas`.
 // -----------------------------------------------------------------------
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -25,6 +34,12 @@ const ROUTINE_TOOL = {
   input_schema: {
     type: "object",
     properties: {
+      grupos_excluidos: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Valores EXACTOS de 'grupo_muscular' (copiados tal cual del catálogo recibido) que decidiste excluir POR COMPLETO de este día por una lesión o condición médica del usuario. Tu elección de ejercicios será verificada en código contra esta lista. Si no aplica, deja este arreglo vacío [].",
+      },
       nombre_dia: { type: "string", description: "Ej. 'Empuje', 'Pierna'" },
       ejercicios: {
         type: "array",
@@ -49,7 +64,7 @@ const ROUTINE_TOOL = {
         },
       },
     },
-    required: ["nombre_dia", "ejercicios"],
+    required: ["grupos_excluidos", "nombre_dia", "ejercicios"],
   },
 };
 
@@ -84,13 +99,19 @@ Reglas obligatorias:
   "contraindicaciones" contenga esa lesión.
 - Si "condiciones_medicas" no está vacío, es una condición médica real, no
   una preferencia. Razona así: (1) identifica qué PATRONES DE MOVIMIENTO
-  (no ejercicios sueltos) cargan la estructura afectada, (2) EXCLÚYELOS POR
-  COMPLETO para este día, no los "aligeres", (3) si suena aguda/inflamatoria/
-  post-quirúrgica/de inestabilidad, reduce el volumen de esa zona 30-50% y
-  prioriza estabilización sobre progresión de carga, (4) si no hay
-  suficientes ejercicios seguros, incluye menos ejercicios en vez de forzar
-  uno riesgoso. Sé concreto en "nombre_dia" o notas sobre qué excluiste, y
-  recuerda que esto no reemplaza la valoración de un médico o fisioterapeuta.
+  (no ejercicios sueltos) cargan la estructura afectada, (2) decide TODOS
+  los valores de "grupo_muscular" (copiados EXACTOS del catálogo de arriba)
+  que corresponden a esos patrones para este usuario, y ponlos en
+  "grupos_excluidos" ANTES de elegir ningún ejercicio — tu elección será
+  verificada en código contra esa misma lista, así que sé exhaustivo, (3)
+  EXCLÚYELOS POR COMPLETO para este día, no los "aligeres", (4) si suena
+  aguda/inflamatoria/post-quirúrgica/de inestabilidad, reduce el volumen de
+  esa zona 30-50% y prioriza estabilización sobre progresión de carga, (5)
+  si no hay suficientes ejercicios seguros, incluye menos ejercicios en vez
+  de forzar uno riesgoso. Sea concreto en "nombre_dia" sobre qué excluiste,
+  y recuerda que esto no reemplaza la valoración de un médico o
+  fisioterapeuta. Si no hay lesión/condición relevante, deja
+  "grupos_excluidos" vacío [].
 - Usa solo equipo presente en "equipo_disponible" del usuario.
 ${reglaVolumen}
 - Para cada ejercicio, sugiere hasta 2 "alternativas" del mismo catálogo,
@@ -129,6 +150,14 @@ function validarDia(diaGenerado: any, catalogo: any[], perfil: any): string[] {
   const catalogoPorId = new Map(catalogo.map((e) => [e.exercise_id, e]));
   const lesiones = new Set(perfil.lesiones || []);
   const equipoDisponible = new Set(perfil.equipo_disponible || []);
+  // Grupos que el propio modelo declaró excluir para este día (ver
+  // `grupos_excluidos` en ROUTINE_TOOL) — chequeo determinista activo hoy,
+  // sin depender de que `contraindicaciones` esté poblado en el catálogo.
+  const gruposExcluidos = new Set(
+    (Array.isArray(diaGenerado?.grupos_excluidos) ? diaGenerado.grupos_excluidos : [])
+      .map((g: unknown) => String(g).toLowerCase().trim())
+      .filter(Boolean),
+  );
 
   if (!diaGenerado.ejercicios || diaGenerado.ejercicios.length === 0) {
     errores.push("El día generado no incluye ningún ejercicio.");
@@ -140,6 +169,9 @@ function validarDia(diaGenerado: any, catalogo: any[], perfil: any): string[] {
     if (!catEj) { errores.push(`'${ej.exercise_id}' no existe en el catálogo.`); continue; }
     const contraindicado = (catEj.contraindicaciones || []).filter((c: string) => lesiones.has(c));
     if (contraindicado.length > 0) errores.push(`'${catEj.nombre}' contraindicado para: ${contraindicado.join(", ")}.`);
+    if (gruposExcluidos.size > 0 && gruposExcluidos.has(String(catEj.grupo_muscular || "").toLowerCase().trim())) {
+      errores.push(`'${catEj.nombre}' es del grupo '${catEj.grupo_muscular}', que tú mismo declaraste en 'grupos_excluidos' por la condición médica del usuario — no puede aparecer en este día.`);
+    }
     if (equipoDisponible.size > 0 && !equipoDisponible.has(catEj.equipo)) {
       errores.push(`'${catEj.nombre}' requiere equipo no disponible (${catEj.equipo}).`);
     }
@@ -326,7 +358,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ dia, nombre_dia: diaGenerado.nombre_dia, ejercicios: diaGenerado.ejercicios }), {
+    return new Response(JSON.stringify({ dia, nombre_dia: diaGenerado.nombre_dia, ejercicios: diaGenerado.ejercicios, grupos_excluidos: diaGenerado.grupos_excluidos || [] }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

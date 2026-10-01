@@ -421,7 +421,10 @@ function conectarAccionesPlan(tipo) {
 function renderEntrenamiento() {
   const puente = puenteEntrenamiento();
   const objetivo = leerObjetivoEspecial();
-  const enCurso = puente?.hasActiveSession?.();
+  // Rutina preparada (generada, sin empezar) y sesión en curso viven en el
+  // almacenamiento local del módulo (session-slots.mjs): sobreviven a
+  // navegar y a recargar la página.
+  const reanudar = puente?.getResumeState?.() ?? { active: false, preparedOrigin: null };
 
   const tarjetasPlanes = Object.entries(PLANES).map(([tipo, plan]) => {
     const activo = planActivo(tipo);
@@ -447,16 +450,21 @@ function renderEntrenamiento() {
   app.appendChild(h(`
     <div>
       <header class="g2-appbar"><h1>Entrenamiento</h1><p>Tus planes y sesiones</p></header>
-      ${enCurso ? `
+      ${reanudar.active ? `
         <div class="mensaje info g2-resume-banner">
-          Tienes una sesión en curso.
+          Sesión en curso
           <button type="button" class="g2-link-btn" id="btn-continuar-sesion">Continuar →</button>
+        </div>` : ''}
+      ${reanudar.preparedOrigin ? `
+        <div class="mensaje info g2-resume-banner">
+          Rutina preparada (${reanudar.preparedOrigin === 'especial' ? 'Entrenamiento especial' : 'Calistenia'})
+          <button type="button" class="g2-link-btn" id="btn-continuar-preparada">Continuar →</button>
         </div>` : ''}
       ${tarjetasPlanes}
       <div class="g2-product-card">
         <div class="g2-product-info">
           <div class="g2-product-name">🤸 Calistenia</div>
-          <div class="g2-product-status">Sesión bajo demanda (aún no se guarda como plan)</div>
+          <div class="g2-product-status">${reanudar.preparedOrigin === 'calistenia' ? 'Rutina preparada' : 'Sesión bajo demanda (aún no se guarda como plan)'}</div>
         </div>
         <button type="button" class="g2-btn-secondary" id="btn-calistenia">Crear sesión</button>
       </div>
@@ -478,21 +486,33 @@ function renderEntrenamiento() {
   });
   const continuar = document.getElementById('btn-continuar-sesion');
   if (continuar) continuar.onclick = () => irAPantalla('entrenar');
+  const continuarPreparada = document.getElementById('btn-continuar-preparada');
+  if (continuarPreparada) {
+    continuarPreparada.onclick = () => (reanudar.preparedOrigin === 'especial' ? abrirEspecial() : irAPantalla('calistenia'));
+  }
   document.getElementById('btn-calistenia').onclick = () => irAPantalla('calistenia');
-  document.getElementById('btn-especial').onclick = () => {
-    // Entrar desde el hub empieza limpio (sin el aviso/sesión de la visita
-    // anterior); el texto a medio escribir sí se conserva.
-    especialUi.aplicado = null;
-    especialUi.mensaje = null;
-    irAPantalla('especial');
-  };
+  document.getElementById('btn-especial').onclick = () => abrirEspecial();
+}
+
+// Entrar a Entrenamiento especial desde el hub empieza limpio (sin el
+// aviso de la visita anterior); el texto a medio escribir sí se conserva.
+// Si hay una rutina independiente preparada, se reabre tal cual, con el
+// texto de sesión con el que se generó.
+function abrirEspecial() {
+  const puente = puenteEntrenamiento();
+  const preparada = puente?.getResumeState?.().preparedOrigin === 'especial';
+  especialUi.aplicado = preparada ? puente.SPECIAL_TRAINING_MODES.INDEPENDENT : null;
+  especialUi.mensaje = null;
+  if (preparada && !especialUi.texto.trim()) especialUi.texto = puente.preparedSessionText('especial');
+  irAPantalla('especial');
 }
 
 // Calistenia: todavía NO hay un plan semanal persistido para este
 // producto; lo honesto es presentarlo como sesión bajo demanda (pipeline
-// Context Engine -> Compatibility Engine -> Workout Planner, bloqueado a
-// la modalidad calistenia). Cuando exista un plan, esta pantalla puede
-// ganar "Ver plan" sin cambiar la navegación global.
+// Context Engine -> Gym-Exercise-Library (snapshot sincronizado, GA-006)
+// -> Compatibility Engine -> Workout Planner, bloqueado a la modalidad
+// calistenia). Sin catálogo demo de respaldo. Cuando exista un plan, esta
+// pantalla puede ganar "Ver plan" sin cambiar la navegación global.
 function renderCalistenia() {
   app.innerHTML = '';
   app.appendChild(h(`
@@ -502,7 +522,7 @@ function renderCalistenia() {
       <div id="today-root"></div>
     </div>`));
   conectarVolverEntrenamiento();
-  montarArmadorSesion(document.getElementById('today-root'), { lockedModalities: ['calisthenics'] });
+  montarArmadorSesion(document.getElementById('today-root'), { lockedModalities: ['calisthenics'], origen: 'calistenia' });
 }
 
 // =========================================================================
@@ -552,7 +572,7 @@ function renderEspecial() {
         <label class="etiqueta" for="especial-texto">¿Qué quieres preparar o resolver?</label>
         <textarea class="input-modal g2-intent-input" id="especial-texto" rows="4" maxlength="${maximo}"
           placeholder="Ej.: Hoy no fui al gimnasio y quiero hacer calistenia en casa. En 30 días voy a un concierto y quiero mejorar mi condición.">${escaparHtml(especialUi.texto)}</textarea>
-        <p class="subtitulo g2-intent-nota">Es contexto para tu entrenamiento, no un diagnóstico. Tus lesiones y condiciones se editan en Perfil.</p>
+        <p class="subtitulo g2-intent-nota">Es contexto temporal: acompaña solo a la sesión que generes con él y no se guarda en tu Perfil. No es un diagnóstico. Lo que quieras que GymApp recuerde siempre, escríbelo en Perfil.</p>
 
         <label class="etiqueta">¿Cómo quieres aplicar este objetivo?</label>
         <div class="g2-opciones">
@@ -624,7 +644,7 @@ function renderEspecial() {
   }
 
   if (especialUi.aplicado === MODOS.INDEPENDENT) {
-    montarArmadorSesion(document.getElementById('today-root'), {});
+    montarArmadorSesion(document.getElementById('today-root'), { origen: 'especial' });
   }
 }
 
@@ -644,8 +664,15 @@ function renderEntrenar() {
 
 // Armador de sesiones bajo demanda (tiempo/lugar/modalidades de ESA
 // sesión — nunca de un plan semanal). Lo usan Calistenia y el modo
-// "entrenamiento independiente" de Entrenamiento especial.
-function montarArmadorSesion(contenedor, { lockedModalities = null }) {
+// "entrenamiento independiente" de Entrenamiento especial. Ambos usan el
+// catálogo real de Gym-Exercise-Library (snapshot sincronizado, GA-006),
+// sin catálogo demo de respaldo. La rutina generada se guarda como
+// "preparada" (por `origen`) y se restaura al volver, sin regenerarse.
+// Contexto físico (se lee solo al pulsar Generar; nada se escribe de vuelta
+// al Perfil): atajos `lesiones` (legado), el texto del usuario en Perfil
+// (`condiciones_medicas`) y, solo en Entrenamiento especial, el texto
+// temporal de esa sesión.
+function montarArmadorSesion(contenedor, { lockedModalities = null, origen }) {
   if (!contenedor) return;
   if (!window.GymAppTodayExperience) {
     contenedor.innerHTML = '<div class="mensaje error">No se pudo cargar el módulo de entrenamiento. Revisa la consola.</div>';
@@ -657,6 +684,13 @@ function montarArmadorSesion(contenedor, { lockedModalities = null }) {
     lockedModalities,
     title: null,
     showDevControls: controlesDevActivos(),
+    catalogSource: 'exercise_library',
+    origin: origen,
+    getPhysicalContextInputs: () => ({
+      legacyChips: [...perfilForm.lesiones],
+      profileText: perfilForm.condicionesMedicas,
+      sessionText: origen === 'especial' ? especialUi.texto : '',
+    }),
   });
 }
 
@@ -814,11 +848,11 @@ function renderPerfil() {
 
       <section class="g2-card">
         <h2 class="g2-seccion">Restricciones y consideraciones</h2>
-        <label class="etiqueta">Lesiones o limitaciones</label>
+        <label class="etiqueta" for="p-condiciones">Lesiones, molestias o limitaciones que quieras que GymApp tenga en cuenta</label>
+        <textarea class="input-modal" id="p-condiciones" placeholder="Descríbelo con tus palabras. Ej.: tendinitis en el hombro derecho, me molesta al levantar el brazo por encima de la cabeza.">${escaparHtml(perfilForm.condicionesMedicas)}</textarea>
+        <p class="subtitulo g2-nota">Se guarda tal como lo escribes y se mantiene hasta que tú lo cambies. GymApp no lo convierte en un diagnóstico. Esto no sustituye la valoración de tu médico o fisioterapeuta.</p>
+        <label class="etiqueta">Atajos rápidos por zona (opcional)</label>
         <div class="chip-grid" id="p-lesiones"></div>
-        <label class="etiqueta">Condición médica específica (opcional, pero importante)</label>
-        <textarea class="input-modal" id="p-condiciones">${escaparHtml(perfilForm.condicionesMedicas)}</textarea>
-        <p class="subtitulo g2-nota">Esto no sustituye la valoración de tu médico o fisioterapeuta. Se mantiene hasta que tú lo cambies.</p>
         <div class="toggle-fila ${perfilForm.evitarMaquinas ? 'activo' : ''}" id="p-evitar-maquinas">
           <div class="toggle-dot"></div>
           <div class="toggle-texto">

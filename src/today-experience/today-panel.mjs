@@ -1,10 +1,20 @@
-// DOM rendering for the GymApp 2.0 primary flow: Hoy (plan) -> Entrenar
-// (active workout) -> summary. The ONLY file in src/today-experience that
-// touches `document`. It never runs domain rules itself — it calls
-// runTodayOrchestration() (the real 3-engine pipeline) and
-// workout-session.mjs's pure state machine, and only renders their
-// output. See README.md for how app.js wires this in.
+// DOM rendering for the GymApp 2.0 on-demand session builder and the
+// active workout. The ONLY file in src/today-experience that touches
+// `document`. It never runs domain rules itself: generation and the
+// prepared/active lifecycle live in session-builder.mjs (DOM-free, tested),
+// the workout state machine in workout-session.mjs, and storage in
+// session-slots.mjs. See README.md for how app.js wires this in.
 import { runTodayOrchestration } from './orchestrator.mjs';
+import { loadLibraryProvider, LibrarySnapshotError } from '../exercise-library/provider.mjs';
+import {
+  generatePreparedSession,
+  getBuilderState,
+  preparedViewModel,
+  regenerateWarning,
+  startPreparedSession,
+  startWarning,
+} from './session-builder.mjs';
+import { buildPhysicalContextMessages } from './physical-context.mjs';
 import {
   TIME_OPTIONS_MINUTES,
   ENVIRONMENT_OPTIONS,
@@ -26,13 +36,19 @@ import {
   buildSessionSummary,
   getActiveSession,
   setActiveSession,
-  clearActiveSession,
+  getSessionSlots,
 } from './workout-session.mjs';
 
 const MODALITY_ICONS = { gym: '💪', calisthenics: '🤸', cardio: '🏃', core: '🧘' };
 const TONE_TO_MENSAJE_CLASS = { success: 'info', warning: 'warning', danger: 'error' };
 const GOAL_LABELS = { general_fitness: 'Acondicionamiento general' };
 const DEFAULT_GOAL_LABEL = GOAL_LABELS[TODAY_DEFAULT_TRAINING_GOAL] ?? TODAY_DEFAULT_TRAINING_GOAL;
+
+// Exercise names and user-authored text are external/free text, so they
+// are escaped before being placed into innerHTML templates.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+}
 
 function iconForExercise(item) {
   return MODALITY_ICONS[item.modality] ?? '🏋️';
@@ -48,18 +64,20 @@ function renderChipGroup(target, options, selected, { multi }) {
     .join('');
 }
 
-// Entry point. `screen`: 'home' shows the planning form (generic, or
-// locked to a single product's modality — see `lockedModalities`); 'active'
-// shows the in-progress session or an empty state directing the user back
-// to Entrenamiento. `navigate(pantalla)` lets this module ask app.js to
-// switch screens (e.g. after "Empezar entrenamiento") — app.js remains the
-// sole owner of routing/state (`estado`). `lockedModalities`/`title`/
-// `subtitle` let one implementation serve both the generic on-demand
-// session builder (Entrenamiento especial → entrenamiento independiente)
-// and a single product's session builder (Calistenia) — see app.js's
-// renderEspecial()/renderCalistenia(). `showDevControls` reveals the
-// demo-only restriction toggle; it is off in normal UX (app.js turns it on
-// only with ?dev=1).
+// Entry point. `screen`: 'home' shows the session builder; 'active' shows
+// the in-progress session, the last finished session's summary, or an
+// empty state. `navigate(pantalla)` asks app.js to switch screens (app.js
+// owns routing). `lockedModalities`/`title`/`subtitle` let one builder
+// serve Calistenia and Entrenamiento especial → independiente.
+// `showDevControls` reveals the demo-only restriction toggle (?dev=1).
+//
+// `catalogSource: 'exercise_library'` (what app.js always uses) generates
+// from the Gym-Exercise-Library snapshot and persists the result as the
+// prepared session for `origin` ('calistenia' | 'especial'); remounting
+// restores it instead of regenerating. `getPhysicalContextInputs()` returns
+// { legacyChips, profileText, sessionText } and is read only when the user
+// presses Generar (see physical-context.mjs). The default 'demo' source is
+// kept only for tests and is not persisted.
 export function mount(
   container,
   {
@@ -69,20 +87,53 @@ export function mount(
     title = 'Hoy',
     subtitle = '¿Qué entrenamos hoy?',
     showDevControls = false,
+    catalogSource = 'demo',
+    origin = 'calistenia',
+    getPhysicalContextInputs = () => ({}),
   } = {},
 ) {
   if (screen === 'active') {
     renderActiveScreen(container, navigate);
   } else {
-    renderHomeScreen(container, navigate, { lockedModalities, title, subtitle, showDevControls });
+    renderHomeScreen(container, navigate, {
+      lockedModalities,
+      title,
+      subtitle,
+      showDevControls,
+      catalogSource,
+      origin,
+      getPhysicalContextInputs,
+    });
   }
 }
 
+// Loaded once per page and reused; a failed load is not cached so a
+// re-sync followed by another click works without a reload.
+let libraryProviderPromise = null;
+function getLibraryProvider() {
+  if (!libraryProviderPromise) {
+    libraryProviderPromise = loadLibraryProvider().catch((error) => {
+      libraryProviderPromise = null;
+      throw error;
+    });
+  }
+  return libraryProviderPromise;
+}
+
 // =========================================================================
-// Home: planning form + generated plan preview
+// Home: session builder + prepared routine
 // =========================================================================
-function renderHomeScreen(container, navigate, { lockedModalities, title, subtitle, showDevControls }) {
+function renderHomeScreen(
+  container,
+  navigate,
+  { lockedModalities, title, subtitle, showDevControls, catalogSource, origin, getPhysicalContextInputs },
+) {
+  const persistent = catalogSource === 'exercise_library';
+  const slots = getSessionSlots();
   const uiState = defaultTodayUiState();
+  // Restore the form from the prepared routine (never regenerate it).
+  const restored = persistent ? getBuilderState(slots, origin).prepared : null;
+  if (restored) Object.assign(uiState, structuredClone(restored.request));
   if (lockedModalities) {
     uiState.modalities = [...lockedModalities];
   }
@@ -91,12 +142,17 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
   // <details> the user just opened.
   let advancedOpen = false;
   let demoOpen = false;
+  // Demo-only (tests / non-persistent path): last in-memory result.
+  let demoResult = null;
 
   function renderForm() {
+    const state = persistent ? getBuilderState(slots, origin) : { prepared: null, otherPrepared: null };
     // `title: null` lets the host screen render its own header above this
     // form (app.js's Entrenamiento especial puts the user's request first).
     container.innerHTML = `
       ${title ? `<header class="g2-appbar"><h1>${title}</h1><p>${subtitle}</p></header>` : ''}
+
+      <div id="today-resume"></div>
 
       <section class="g2-card">
         <label class="etiqueta">Tiempo disponible</label>
@@ -140,7 +196,7 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
 
         <p class="subtitulo g2-goal-note">Objetivo de esta vista previa: ${DEFAULT_GOAL_LABEL}.</p>
 
-        <button class="boton-primario g2-cta" data-action="generar">Generar rutina de hoy</button>
+        <button class="boton-primario g2-cta" data-action="generar">${state.prepared ? 'Regenerar rutina' : 'Generar rutina de hoy'}</button>
       </section>
 
       <div id="today-result"></div>
@@ -200,40 +256,73 @@ function renderHomeScreen(container, navigate, { lockedModalities, title, subtit
       renderForm();
     };
 
-    container.querySelector('[data-action="generar"]').onclick = () => {
-      const result = runTodayOrchestration(uiState);
-      renderGenerateResult(container.querySelector('#today-result'), result, navigate);
+    const target = container.querySelector('#today-result');
+    container.querySelector('[data-action="generar"]').onclick = async () => {
+      if (!persistent) {
+        demoResult = runTodayOrchestration(uiState);
+        renderDemoResult(target, demoResult, navigate);
+        return;
+      }
+      const warning = regenerateWarning(slots);
+      if (warning && !window.confirm(warning)) return;
+
+      target.innerHTML = '<div class="mensaje info">Generando…</div>';
+      let provider;
+      try {
+        provider = await getLibraryProvider();
+      } catch (error) {
+        if (!(error instanceof LibrarySnapshotError)) throw error;
+        renderError(target, { ok: false, errorKind: 'catalog_missing', error });
+        return;
+      }
+      const { result } = generatePreparedSession({
+        slots,
+        origin,
+        uiState: structuredClone(uiState),
+        provider,
+        physicalInputs: getPhysicalContextInputs(),
+      });
+      if (!result.ok) {
+        renderError(target, result);
+        return;
+      }
+      renderForm(); // re-render from the persisted prepared routine
     };
 
-    renderResumeBanner(container.querySelector('#today-result'), navigate);
+    renderResumeBanner(container.querySelector('#today-resume'), navigate);
+    if (state.prepared) renderPrepared(target, state.prepared, slots, navigate);
+    else if (state.otherPrepared) renderOtherPreparedNote(target, state.otherPrepared);
+    else if (demoResult) renderDemoResult(target, demoResult, navigate);
   }
 
   renderForm();
 }
 
 function renderResumeBanner(target, navigate) {
-  const activeSession = getActiveSession();
-  if (!activeSession || activeSession.finishedAt) return;
+  if (!getActiveSession()) return;
   target.innerHTML = `
     <div class="mensaje info g2-resume-banner">
-      Tienes un entrenamiento en curso.
+      Sesión en curso.
       <button type="button" class="g2-link-btn" data-action="continue">Continuar →</button>
     </div>`;
   target.querySelector('[data-action="continue"]').onclick = () => navigate('entrenar');
 }
 
-function renderGenerateResult(target, result, navigate) {
+function renderOtherPreparedNote(target, prepared) {
+  const label = prepared.origin === 'especial' ? 'Entrenamiento especial' : 'Calistenia';
+  target.innerHTML = `<div class="mensaje info">Tienes una rutina preparada en ${label}. Si generas una aquí, la reemplaza.</div>`;
+}
+
+function renderError(target, result) {
   const viewModel = buildTodayViewModel(result);
+  target.innerHTML = `
+    <div class="mensaje ${TONE_TO_MENSAJE_CLASS[viewModel.tone]}">
+      <strong>${viewModel.headline}</strong><br>${escapeHtml(viewModel.message)}
+    </div>`;
+  if (viewModel.debug) console.error('[Today experience]', viewModel.debug);
+}
 
-  if (viewModel.kind === 'error') {
-    target.innerHTML = `
-      <div class="mensaje ${TONE_TO_MENSAJE_CLASS[viewModel.tone]}">
-        <strong>${viewModel.headline}</strong><br>${viewModel.message}
-      </div>`;
-    if (viewModel.debug) console.error('[Today experience]', viewModel.debug);
-    return;
-  }
-
+function planHtml(viewModel) {
   const warningsHtml = viewModel.warnings.length
     ? `<ul class="today-warnings">${viewModel.warnings.map((w) => `<li>${w}</li>`).join('')}</ul>`
     : '';
@@ -245,7 +334,7 @@ function renderGenerateResult(target, result, navigate) {
         <div class="g2-exercise-row">
           <div class="g2-exercise-icon">${iconForExercise(item)}</div>
           <div class="g2-exercise-info">
-            <div class="g2-exercise-name">${item.order}. ${item.name}</div>
+            <div class="g2-exercise-name">${item.order}. ${escapeHtml(item.name)}</div>
             <div class="g2-exercise-meta">${item.modalityLabel} · ${item.prescriptionText} · ~${item.estimatedDurationMinutes} min</div>
             ${
               item.isConditional
@@ -258,7 +347,7 @@ function renderGenerateResult(target, result, navigate) {
         .join('')
     : '<div class="vacio"><div class="icono-grande">🧐</div>No hay ejercicios en el plan.</div>';
 
-  target.innerHTML = `
+  return `
     <div class="mensaje ${TONE_TO_MENSAJE_CLASS[viewModel.tone]}"><strong>${viewModel.headline}</strong></div>
     <div class="today-resumen">
       <div class="item"><span class="num">${viewModel.estimatedDurationMinutes}</span><span class="txt">min estimados</span></div>
@@ -266,20 +355,49 @@ function renderGenerateResult(target, result, navigate) {
       <div class="item"><span class="num">${viewModel.exercises.length}</span><span class="txt">ejercicios</span></div>
     </div>
     <p class="subtitulo">Modalidades cubiertas: ${viewModel.modalitiesCovered.join(', ') || 'ninguna'}</p>
+    ${viewModel.sourceNote ? `<p class="subtitulo g2-nota">${viewModel.sourceNote}</p>` : ''}
     ${warningsHtml}
-    ${exercisesHtml}
+    ${exercisesHtml}`;
+}
+
+// The persisted prepared routine: exactly what was generated.
+function renderPrepared(target, prepared, slots, navigate) {
+  const viewModel = preparedViewModel(prepared);
+  const messages = buildPhysicalContextMessages(prepared.physicalContext);
+  target.innerHTML = `
+    <p class="subtitulo g2-nota">Rutina preparada · variante ${prepared.seed.attempt + 1} del ${prepared.seed.date}</p>
+    ${messages.length ? `<div class="mensaje warning">${messages.map((m) => `<p>${escapeHtml(m)}</p>`).join('')}</div>` : ''}
+    ${planHtml(viewModel)}
     ${
       viewModel.exercises.length
         ? '<button type="button" class="boton-primario g2-cta" data-action="start" style="margin-top:16px">Empezar entrenamiento</button>'
         : ''
-    }
-  `;
+    }`;
 
   const startBtn = target.querySelector('[data-action="start"]');
   if (startBtn) {
     startBtn.onclick = () => {
-      const session = createSessionFromPlan(result.plan);
-      setActiveSession(session);
+      const warning = startWarning(slots);
+      if (warning && !window.confirm(warning)) return;
+      startPreparedSession(slots);
+      navigate('entrenar');
+    };
+  }
+}
+
+// Non-persistent demo path (tests only; no app.js screen uses it).
+function renderDemoResult(target, result, navigate) {
+  if (!result.ok) {
+    renderError(target, result);
+    return;
+  }
+  const viewModel = buildTodayViewModel(result);
+  target.innerHTML = `${planHtml(viewModel)}
+    ${viewModel.exercises.length ? '<button type="button" class="boton-primario g2-cta" data-action="start" style="margin-top:16px">Empezar entrenamiento</button>' : ''}`;
+  const startBtn = target.querySelector('[data-action="start"]');
+  if (startBtn) {
+    startBtn.onclick = () => {
+      setActiveSession(createSessionFromPlan(result.plan));
       navigate('entrenar');
     };
   }
@@ -292,6 +410,11 @@ function renderActiveScreen(container, navigate) {
   const session = getActiveSession();
 
   if (!session) {
+    const lastCompleted = getSessionSlots().getLastCompleted();
+    if (lastCompleted) {
+      renderSummaryScreen(container, lastCompleted, navigate);
+      return;
+    }
     container.innerHTML = `
       <div class="vacio">
         <div class="icono-grande">🏋️</div>
@@ -299,11 +422,6 @@ function renderActiveScreen(container, navigate) {
         <button type="button" class="boton-primario g2-cta" data-action="go-home" style="margin-top:16px">Ir a Entrenamiento</button>
       </div>`;
     container.querySelector('[data-action="go-home"]').onclick = () => navigate('entrenamiento');
-    return;
-  }
-
-  if (session.finishedAt) {
-    renderSummaryScreen(container, session, navigate);
     return;
   }
 
@@ -338,7 +456,7 @@ function renderActiveWorkout(container, session, navigate) {
 
     <div class="g2-current-exercise">
       <div class="g2-modality-tag">${vm.current.modalityLabel}</div>
-      <h1>${vm.current.name}</h1>
+      <h1>${escapeHtml(vm.current.name)}</h1>
       <p class="g2-prescription">${vm.current.prescriptionText}</p>
       ${
         vm.current.isConditional
@@ -363,7 +481,7 @@ function renderActiveWorkout(container, session, navigate) {
       ${vm.exerciseList
         .map(
           (e) =>
-            `<button type="button" class="g2-mini-item ${e.isCurrent ? 'activo' : ''} ${e.completed ? 'hecho' : ''}" data-goto="${e.index}">${e.index + 1}. ${e.name}${e.completed ? ' ✓' : ''}</button>`,
+            `<button type="button" class="g2-mini-item ${e.isCurrent ? 'activo' : ''} ${e.completed ? 'hecho' : ''}" data-goto="${e.index}">${e.index + 1}. ${escapeHtml(e.name)}${e.completed ? ' ✓' : ''}</button>`,
         )
         .join('')}
     </div>
@@ -435,7 +553,7 @@ function renderSummaryScreen(container, session, navigate) {
     </div>`;
 
   container.querySelector('[data-action="done"]').onclick = () => {
-    clearActiveSession();
+    getSessionSlots().dismissLastCompleted();
     navigate('entrenamiento');
   };
 }

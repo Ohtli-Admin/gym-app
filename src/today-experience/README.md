@@ -241,6 +241,20 @@ engines' own logic.
 
 ## Demo catalog / provider boundary
 
+> **GA-006 update:** Calistenia and Entrenamiento especial → independiente
+> no longer use the demo catalog. app.js mounts the shared session builder
+> with `catalogSource: 'exercise_library'` and `getProfileInjuries`, which calls
+> `runLibraryOrchestration` with the Gym-Exercise-Library provider
+> (`src/exercise-library/`, fed by the synced snapshot) and maps session
+> equipment to Library ids at the single boundary in
+> `src/exercise-library/equipment-mapping.mjs`. There is no demo fallback
+> on that path: a missing/stale snapshot shows "Falta el catálogo de
+> ejercicios" with the sync command. Candidates are ordered by the session
+> variety policy, and saved profile `lesiones` become restrictions. No UI
+> path selects the demo catalog below any more: it remains only as
+> `runTodayOrchestration`'s default for tests. See
+> `src/exercise-library/README.md`.
+
 ```
 catalog provider           (demo-catalog-provider.mjs today; a real
       |                     Gym-Exercise-Library-backed provider later)
@@ -286,13 +300,47 @@ asserts this for every file in that graph, by source inspection).
 
 ## Active workout / session state
 
-Tapping **"Empezar entrenamiento"** calls `createSessionFromPlan(plan)`
-(raw plan data — exercise id/name/modality/status/reasons/prescription —
-not the display view model) and stores it via `setActiveSession`, then
-asks `app.js` to navigate to **Entrenar**. The active-session screen reads
-the same shared store on every mount, so the in-progress workout survives
-navigating to Progreso/Perfil and back, and a page reload (best-effort,
-via `localStorage`).
+### Lifecycle (GA-006)
+
+Before GA-006, a generated routine lived only in the builder's closure and
+DOM. Navigating away and back remounted an empty form, so the routine was
+lost. Only "Empezar" persisted anything. Now `session-slots.mjs` holds
+every state in `localStorage`, reads storage on every access (no module
+cache), and falls back to memory when storage is unavailable.
+`session-builder.mjs` is the DOM-free controller the panel calls.
+
+| State | Storage key | Written | Cleared |
+|---|---|---|---|
+| **Generated** (prepared) | `gymapp2.preparedSession.v1` | Immediately after Generar/Regenerar | On Empezar, or replaced by a new generation |
+| **Active** | `gymapp2.activeSession.v1` (same key as GA-005) | On Empezar, then after every action (set logged, exercise completed, moving between exercises, Anterior/Siguiente) | On Finalizar |
+| **Completed** | `gymapp2.lastCompletedSession.v1` | On Finalizar. It is no longer resumable, and it holds the summary screen. | When the user leaves the summary ("Volver a Entrenamiento") |
+| Seed counter | `gymapp2.sessionSeed.v1` `{ date, next }` | Only by an explicit Generar/Regenerar | Never; a new local date restarts at `#0` |
+
+The prepared record stores:
+- `origin` (calistenia / especial) and `createdAt`;
+- `seed` `{date, attempt, value}`;
+- `request`: time, environment, modalities, level, equipment, allowConditional;
+- `context`: the mapped Library equipment and any unmapped values;
+- `library`: repo, commit, snapshot timestamp, policy version, record count;
+- `physicalContext`: the report shown to the user;
+- `sessionContext.text`;
+- the exact `plan`: ids, names, order, prescriptions, statuses, reasons.
+
+On Empezar, all of that moves into the active session's `meta`.
+
+Behavior:
+- **Navigation and remount** only read storage. They never regenerate and
+  never advance the seed.
+- **Refresh, phone lock or backgrounding** behave the same, because every
+  change is written synchronously.
+- **Regenerar** asks before replacing a prepared routine, advances the seed
+  to the next variant, and persists the new routine.
+- **Empezar** asks before replacing an unfinished session in progress.
+- The **Entrenamiento hub** shows "Sesión en curso — Continuar" and/or
+  "Rutina preparada — Continuar", which reopens Calistenia or Entrenamiento
+  especial.
+- A GA-005 session stored with `finishedAt` is migrated to "completed" on
+  first read.
 
 **Logging:** a `sets_reps` exercise shows a reps/weight input row and a
 "Marcar serie" button (each tap appends one numbered set); a `duration`
@@ -316,6 +364,11 @@ A local-only session, under its own namespaced `localStorage` key
 storage, is therefore the *correct* choice until a real catalog provider
 supplies real, storable exercise identity — not merely the fastest one
 tonight. See `workout-session.mjs`'s own header comment.
+
+GA-006 keeps this decision for Library-backed sessions: their
+exercise ids are canonical `exercise_id`s, which must not be written
+into the legacy `ejercicio_id` columns (no crosswalk / `exercise_reference`
+table exists yet — see `docs/LEGACY_EXERCISE_CROSSWALK.md`).
 
 ## Result experience
 

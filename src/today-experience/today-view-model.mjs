@@ -2,6 +2,7 @@
 // lives here — this file is unit-testable with node:test and reusable by
 // any future UI (this repo's or otherwise) without change.
 import { ENVIRONMENTS, MODALITIES, EXPERIENCE_LEVELS, EQUIPMENT } from '../context-engine/index.mjs';
+import { SYNC_COMMAND as LIBRARY_SYNC_COMMAND } from '../exercise-library/provider.mjs';
 
 // --- UI vocabulary (built FROM the real Context Engine enums, never a
 // hand-maintained duplicate list) -------------------------------------
@@ -83,8 +84,15 @@ export function defaultTodayUiState() {
 // Shapes already-collected UI state into buildTrainingContext()'s raw
 // input contract. Does not validate anything itself — Context Engine is
 // the single source of truth for validation (see orchestrator.mjs).
+// `uiState.profileRestrictions` / `uiState.sessionNotes` come from
+// physical-context.mjs (runtime only) and are passed through unchanged:
+// restrictions as Context Engine restrictions, the temporary session text
+// as Context Engine's free-text `preferences.notes`.
 export function buildContextInputFromUi(uiState) {
-  const restrictions = uiState.demoShoulderRestriction ? [DEMO_SHOULDER_RESTRICTION] : [];
+  const restrictions = [
+    ...(uiState.profileRestrictions ?? []),
+    ...(uiState.demoShoulderRestriction ? [DEMO_SHOULDER_RESTRICTION] : []),
+  ];
   return {
     trainingGoal: TODAY_DEFAULT_TRAINING_GOAL,
     environment: uiState.environment,
@@ -93,11 +101,20 @@ export function buildContextInputFromUi(uiState) {
     modalities: uiState.modalities,
     equipment: uiState.equipment,
     restrictions,
+    ...(uiState.sessionNotes ? { preferences: { dislikedEquipment: [], notes: uiState.sessionNotes } } : {}),
   };
 }
 
 function formatPrescription(prescription) {
   if (prescription.type === 'sets_reps') {
+    if (prescription.repsMin != null && prescription.repsMax != null) {
+      return `${prescription.sets} series x ${prescription.repsMin}–${prescription.repsMax} repeticiones`;
+    }
+    if (prescription.reps == null) {
+      // The catalog doesn't say enough to suggest repetitions (see
+      // src/exercise-library/prescription-policy.mjs): don't invent them.
+      return `${prescription.sets} series (repeticiones a tu criterio)`;
+    }
     return `${prescription.sets} series x ${prescription.reps} repeticiones`;
   }
   if (prescription.type === 'duration') {
@@ -175,6 +192,17 @@ export function buildPlanViewModel(plan) {
 // error view model. `debug` is retained separately for developer
 // console/log use — never shown to the user as the primary explanation.
 export function buildErrorViewModel(orchestrationResult) {
+  if (orchestrationResult.errorKind === 'catalog_missing') {
+    // Development error: the GymApp-owned Library snapshot was never
+    // synced (or is stale). There is no demo fallback on this path.
+    return {
+      kind: 'error',
+      tone: 'danger',
+      headline: 'Falta el catálogo de ejercicios',
+      message: `El snapshot de Gym-Exercise-Library no está sincronizado. En desarrollo, ejecuta: ${LIBRARY_SYNC_COMMAND}`,
+      debug: orchestrationResult.error?.message ?? String(orchestrationResult.error),
+    };
+  }
   if (orchestrationResult.errorKind === 'validation') {
     return {
       kind: 'error',
@@ -193,8 +221,15 @@ export function buildErrorViewModel(orchestrationResult) {
   };
 }
 
+// Shown under a Library-backed plan so pilot trust is never implicit.
+export const LIBRARY_SOURCE_NOTE =
+  'Ejercicios de Gym-Exercise-Library (catálogo piloto, en revisión). El catálogo no indica qué ejercicios son de mantener una posición: en esos, cuenta segundos en lugar de repeticiones.';
+
 export function buildTodayViewModel(orchestrationResult) {
-  return orchestrationResult.ok ? buildPlanViewModel(orchestrationResult.plan) : buildErrorViewModel(orchestrationResult);
+  if (!orchestrationResult.ok) return buildErrorViewModel(orchestrationResult);
+  const viewModel = buildPlanViewModel(orchestrationResult.plan);
+  viewModel.sourceNote = orchestrationResult.catalogSource === 'exercise_library' ? LIBRARY_SOURCE_NOTE : null;
+  return viewModel;
 }
 
 // --- Active workout session view models --------------------------------

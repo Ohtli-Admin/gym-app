@@ -1,0 +1,2594 @@
+{
+  "generatedAt": "2026-09-25T01:16:31.832Z",
+  "generatedBy": "tools/sync-exercise-library.mjs",
+  "source": {
+    "repository": "Ohtli-Admin/Gym-Exercise-Library",
+    "path": "output/gym-exercise-library/catalog.json",
+    "readMode": "commit",
+    "commit": "584b45d5b68687346ba8c1b84d1680eb914b3e0e",
+    "catalogLastCommit": "0980ec9abba329cb37a82f43961cb2570482784f",
+    "catalogHasUncommittedChanges": true,
+    "schemaVersions": {
+      "0.2": 876
+    },
+    "recordCount": 876
+  },
+  "importedRecordCount": 610,
+  "trust": "pilot",
+  "trustNote": "Records are admitted by GymApp structural pilot policy only. Library status/review are preserved per record; none is treated as approved catalog.",
+  "filteringPolicy": {
+    "version": "ga006-pilot-v1",
+    "supportedSchemaVersions": [
+      "0.2"
+    ],
+    "acceptedStatuses": [
+      "draft",
+      "review_required",
+      "approved"
+    ],
+    "requires": [
+      "exercise_id matching ^[a-z0-9][a-z0-9_-]*$ (unique)",
+      "names.es or names.en non-blank",
+      "setup.equipment_required: non-empty array of known Library equipment ids",
+      "classification.training_types: non-empty array of known Library training type ids",
+      "equipment_optional, body_regions, primary_muscles, joint_actions, movement_patterns, constraints: arrays of ids (may be empty)"
+    ]
+  },
+  "modalityPolicy": {
+    "version": "ga006-modality-v1",
+    "trainingTypeToModality": {
+      "strength": "gym",
+      "hypertrophy": "gym",
+      "muscular_endurance": "gym",
+      "power": "gym",
+      "bodybuilding": "gym",
+      "powerlifting": "gym",
+      "olympic_weightlifting": "gym",
+      "strongman": "gym",
+      "kettlebell_training": "gym",
+      "calisthenics": "calisthenics",
+      "cardio": "cardio",
+      "core_training": "core"
+    },
+    "calisthenicsCandidate": {
+      "equipmentFamilies": [
+        "bodyweight",
+        "calisthenics"
+      ],
+      "equipmentIds": [
+        "bodyweight",
+        "pullup_bar",
+        "parallel_bars",
+        "dip_station",
+        "rings",
+        "suspension_trainer",
+        "parallettes"
+      ],
+      "trainingTypes": [
+        "strength",
+        "hypertrophy",
+        "muscular_endurance",
+        "power",
+        "plyometrics",
+        "gymnastics_strength",
+        "isometric_training",
+        "core_training"
+      ],
+      "note": "GymApp product policy, not Library metadata. No name heuristics."
+    }
+  },
+  "profileRestrictionMapping": {
+    "version": "ga006-profile-restrictions-v1",
+    "profileInjuryToLibraryRegion": {
+      "Hombro": "shoulder_girdle",
+      "Muñeca": "forearm_hand",
+      "Espalda baja": "posterior_core",
+      "Cadera": "hip_pelvis",
+      "Tobillo": "lower_leg_foot"
+    }
+  },
+  "sessionVarietyPolicy": {
+    "version": "ga006-variety-v1"
+  },
+  "equipmentMapping": {
+    "version": "ga006-equipment-v1",
+    "gymAppToLibrary": {
+      "bodyweight": "bodyweight",
+      "dumbbell": "dumbbell",
+      "barbell": "barbell",
+      "kettlebell": "kettlebell",
+      "resistance_band": "resistance_band",
+      "pull_up_bar": "pullup_bar"
+    },
+    "unmappedGymAppValues": [
+      "bench",
+      "machine",
+      "cardio_machine",
+      "bike"
+    ]
+  },
+  "media": {
+    "note": "primary_image references are preserved in adapted exercises (library.primaryImage) but not copied or loaded by GymApp.",
+    "resolvableExerciseIds": [
+      "src-002-2bb03d9895c16d37",
+      "src-002-9b4ed20a4bcf6cfc",
+      "src-002-636e2a0b0650c81a",
+      "src-002-92ecdfa6bc5741b9",
+      "src-002-51db8f77f302399e",
+      "src-002-a8bce8ea2dcb9780",
+      "src-002-a8bf31db4352f32c",
+      "src-002-6f7f7b885f1bf1f6",
+      "src-002-9e7700c2523820f4",
+      "src-002-fc95f21be5f08187",
+      "src-002-06815c1243343ccf",
+      "src-002-114b5f764c60cd77",
+      "src-002-03c1b8db4cadea03",
+      "src-002-1cd650fbc30590a5",
+      "src-002-3cf3e5e40a32942a",
+      "src-002-a80b9bd8c5ca5ab6",
+      "src-002-8824dacb3e78d5e4",
+      "src-002-cfd0746bbd0f73af",
+      "src-002-7e6606cffd1f059f",
+      "src-002-5c6b3bfadcef3540",
+      "src-002-0d25810fc8bf1173",
+      "src-002-8a17d60ebc2d2edb",
+      "src-002-88842cfdb62810b4",
+      "src-002-ce90e5063e3eef79",
+      "src-002-b53f85d8335676ea",
+      "src-002-d100e095275118b3",
+      "src-002-c3bdeffc438fa551",
+      "src-002-7c275f916ac75019",
+      "src-002-12d8a295f50eebc0",
+      "src-002-485cb158cc00a954",
+      "src-002-a32ddb47034baf23",
+      "src-002-1360a3263bd2fd10"
+    ]
+  },
+  "diagnostics": {
+    "totalRecordsRead": 876,
+    "acceptedRecords": 610,
+    "rejectedRecords": 266,
+    "rejectionReasons": {
+      "EQUIPMENT_REQUIRED_EMPTY": 266
+    },
+    "explicitCalisthenicsTrainingType": {
+      "all": 0,
+      "accepted": 0
+    },
+    "calisthenicsPolicyCandidates": {
+      "all": 88,
+      "accepted": 88
+    },
+    "missingSpanishName": 876,
+    "missingEnglishName": 0,
+    "missingEquipment": 266,
+    "missingTrainingTypes": 0,
+    "primaryMediaReferences": {
+      "all": 41,
+      "accepted": 32
+    },
+    "primaryMediaResolvableInSourceCheckout": 32,
+    "statuses": {
+      "draft": 876
+    },
+    "reviewStatuses": {
+      "review_required": 876
+    },
+    "acceptedTrainingTypes": {
+      "strength": 472,
+      "stretching": 38,
+      "olympic_weightlifting": 35,
+      "powerlifting": 35,
+      "plyometrics": 30
+    },
+    "acceptedEquipmentRequired": {
+      "barbell": 170,
+      "dumbbell": 123,
+      "bodyweight": 111,
+      "cable_machine": 81,
+      "kettlebell": 56,
+      "resistance_band": 20,
+      "medicine_ball": 17,
+      "swiss_ball": 12,
+      "foam_roller": 11,
+      "ez_bar": 9
+    },
+    "acceptedWithoutSpanishName": 610
+  },
+  "rejected": [
+    {
+      "exerciseId": "src-002-12a4d5b4c232f91c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-513e3624da776d7c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-5b0ffde41921bace",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b072d33f7f6157d4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4d41b77720703de3",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-590465f58a7bdbe5",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-5e736613fb3b0abb",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9c12291dbc7f489d",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-21ce6a6b0e4a0f2b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-58272e6861612486",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-494d26437fc143f3",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d2b5a4432450c658",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-35de7d81dc36d650",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b30579c85d0d2cb8",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ea3c05001204f2b9",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-a290b089944ee12b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-8e81cceaece5a65b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-7eb1e2c95d2d4a10",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-456ac2f5deb561aa",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b8bbb27facc8e2ea",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ec9078b6ae9afad1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-efa152ea4709a34f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ec6b317da227a886",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-030b884d7a6b2c52",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-48c973c2007da5c8",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-3ff64fb08d55f1f9",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e5baacfd3811298b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-656ae6212f74f92b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-980e3ac06f042712",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-3d6fee953b7f2abb",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c8d7cacd3ecb0771",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-8fcc9db63f77cc67",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-643e3797d6041e6a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1b8d7c62a8e5a0bf",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-80526b22a06b9179",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-5b281385a3066e4f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-eb35ce8d6099948a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1d46f6ee33adf130",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-24828c65ec07608b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-22e48e74c23c83eb",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-8293df44ca8e9548",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c953a55c8f58ad4d",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-12f88bded6cd58ab",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-08f8ada4452f8914",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-46efef6fd43dc515",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0be1431e7282db70",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-cbd396f4c9d5a17a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f41aa4d89468cb52",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-37fdf73682937024",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-7e6b7785d5c2a41e",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d29d1867934c2f6b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2b5a5dc759295d57",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d9365bae873ccc69",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-7c7ca0318533739e",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-76e10ecc446c8445",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0d73991d02999aab",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9c049e61c401fdb1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-08291a498fbcd17b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6a7481fc3ea64dd8",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-30943c175c9fa4a9",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-81a44fdef3457c5a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e3f3c3cdfd9c75fa",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9460a058af832e54",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f80ede92ea6b2afd",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-cbfcff5f408b7e6e",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c903348ab61424b4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d4762c3e505b013b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6eb56074e39b7b3c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ddceee9248de550d",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-fa9731b17629f897",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-bce38f9173b41427",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-cf81bc285c0a6553",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-45a796f2c3eb8ebe",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-aaccd5fe3f2e4994",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f01fe4e94969ee65",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2fae0a8531aacd88",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-3ceace085ca2d051",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-148864406fc010d2",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1d38cfa3533fac10",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-297da31d235fd8f8",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-95f90032ffd7a4b4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4140038dcd1533ab",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e047b7a78513f317",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b04a3e034060c9ce",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6e07c5d76ba6f54b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9e5a54a06d624667",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c02f72cb935dc6e2",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6c096c27b49a506c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-02e2846231cca57c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-eae3df027ce3e1dc",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f1991afa14295fe9",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2e71e0f4473b1df7",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0ed14a560ef4f02f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0c495926126fa521",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-a57b6e63af0dfdab",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-cba3ce21414c23cd",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d36ceebaa85b1513",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-095527a3b2f83be9",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-55d13164f9af083f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-658fd7a5844b7e47",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c7e2c0f3793001c1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0ddc1762c7c5a4ae",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-06a180469061588b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9cae827fb2329bbe",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-abf92d306dcf4817",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-935b917d85d3fdf4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-a90c7f032893950b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-80256eadd9e14cba",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c47a40a97e08c499",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-60101b425082987b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6322ba6dfaf16678",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-fbdf730a41507e88",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-a2dd17e7266753ff",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e8c666a9f422bd0f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1d8539219ea8f253",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-a9712f9d4d052cc0",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-a7b0195d3f46723b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0ebb0e7ebb8bd1d4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-006894589eeac9d1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6e4cad553a25711a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c3260fb4aa83b3b8",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d81ca019ee82335d",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-08addf1d8205bedd",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b57285aa466446d6",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1b190c3362227ceb",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-23173dfa575f4dd0",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d32d51575df5a678",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c90768ec99ee2066",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-a6713346637a7124",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-bf501c310b48c89e",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e376f0bd04d9beb2",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-aaeedabfbf54a1f7",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-bf7eaad6b852826f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-dce1d0719fee1475",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6a2e312558bd3764",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0eea98e41880c3b4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-17bff5a1b881c7d1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-fe0ee96bb9d35974",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-989c1eed32ce4510",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-633662b5ae809667",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b66bb8708e3a5f3c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6038161eed3ec1f4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6ea30d94fc4aa1c4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-5c9f05a5ae2f892a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-5b3ec62f5141ba00",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9425e1cc53677c08",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2a2ae5fa495e61ac",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b8e911dcd25910ee",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d050cd13c92b76dc",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-420405c135dafcf2",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-25e0446f2dca9e06",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-dd7f082c73bbc68a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2b7c4facceaf5710",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-129b661fd89bb154",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f077a619c35ea43a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ed39152f807885ed",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-963986d09c195c6f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d1f7eacac7d78d78",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-27e2aed1c8516fac",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b7f975fb9421db8a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1c652a5645faf97b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-79a59b14aa5eddc7",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-8ae241d6f0b0a5b4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d0b215fe9bda606c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-5d649bc61c6e265b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-494d6b476997419f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f6b573bc050c8915",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c31b84f2f3188563",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1c7c1cbb79f249ad",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-fab3d59308c5de38",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-7250066b78054474",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-fc2b17fd2f3abe12",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4776545e8e7c0fee",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-0508bad0551d6dbb",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c40fa555204c9521",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6d641b72654f7e6a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d2808be87fc7a993",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c0a0c9451637f706",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-5f1895d411e21a71",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-235f87c149ee3b8b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-203f6a4e5b279a74",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6b70bb72d155a6d5",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-462c747c841f5ca1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2986488e0d81e59b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6d44cd2448d242c1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4046ff6799ab622b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-416543db718dc452",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ae4a62a4d8865c0b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c1292f9d0863aaa9",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-176d3a003fc7e49b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ef1e04daaf249b3a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d3fa0f9f03c42ba6",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-8ae48c967b51d60d",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1229ddda8041cdac",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c8458cebd7f36537",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-87e92129a831fc18",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-fa2447a81c89381a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9a5b44af02ce12f0",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e669a4d3a1a7de74",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6c9b57454fb63ee7",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2079ff74d1af6002",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b7acae8620e49b2d",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9e38fbba0fd93844",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-46630561d9ec3426",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-8f399e23bee4b19f",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f378b141c25ca120",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4ce4ca2218f977f9",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-45aba4e6f95b5ca1",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d928fabc031417b2",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1c60bd5cdf8c44d7",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-c95df8cf11842963",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-62531b873e63b98a",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-66e6a46b1b30fdb0",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ec5edddc0b22fafb",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-486cb53e29238487",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-37145e49d23b1cbc",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-63abc1d77f4f7414",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2f63cbba950359cb",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4870443fd6be51fd",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-636f1e4aaff18045",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4eb6f3812846bfe5",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d99f6dbf6344ef44",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-6edd3f5fe939923b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1573b52fca7091af",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e139f25b18ef5a61",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2212ba0c7975b117",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-41764e8174e1318b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b1bc31d59c46be33",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-b130a463a323ab96",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-858d36a14e1290a4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-2f16fce005b122fa",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9b15274a024b5d59",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e2d4630942b9b60b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4f3cb104747999b6",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9b88c93ba3046ee0",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-d50323dd05b951e4",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-bf84ac86f0a3ef16",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e919c6e1e9ae945e",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-20c3bdb7e21565f6",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-bedc029e8ed0efc5",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-3b0aea9db71aac3e",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-f92d23a9757dc806",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-41fa414aa0d550cf",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-ca0a817bf49dbdee",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-94375209fd09f650",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e7fe6e322942687c",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-125219321409b428",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4a5f68fc72a681ea",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-1349b1f553546a75",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-e2b5508960f15279",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-fd214ddde9ee9eaa",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-50bc0cd0d062562b",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-61273af44e5896e2",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9bb0ee395e09db7d",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-9c173e43d7dff6c0",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-eaa7ab83639d7805",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-72ae4b68c2cd70d2",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-591e1e9770b65168",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-3c75e81965929777",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4fa2ffecdaad40fd",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-4c3a26e9e1dd59ed",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-8b73f98ad3988277",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-13c3669442bbed28",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-7bab1e60fd54a2ee",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-540ea1efb5b5821e",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "exerciseId": "src-002-3e580549fa720ce0",
+      "reasons": [
+        {
+          "code": "EQUIPMENT_REQUIRED_EMPTY",
+          "detail": null
+        }
+      ]
+    }
+  ]
+}
