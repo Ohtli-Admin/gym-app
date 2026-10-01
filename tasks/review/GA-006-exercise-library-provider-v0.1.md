@@ -350,9 +350,15 @@ were not yet on `main`. Since `main` was still a direct ancestor of
 (`0914956..c38bb52`) rather than merged again, keeping history linear.
 `main` now carries the full, documented GA-006 closure.
 
-**Explicitly not yet done, per the approval request's own scope**: actual
-production deployment — redeploying `generate-routine` and `regenerate-day`
-to Supabase so the FR-006 wording fix takes live effect, and/or promoting
-the Vercel build of this code to the production domain. The approval
-covered the `main` merge; deploy is a separate action and needs its own
-explicit go-ahead before it happens, per `AGENTS.md`'s approval boundary.
+**Deployment (2026-10-01, same day, separately approved)**: while reviewing
+what deployment would still involve, it surfaced that Vercel's production
+domain (`gym-app-delta-nine.vercel.app`) auto-deploys on every push to
+`main` via its GitHub integration — so the full GA-006 frontend was already
+live before this was even asked about, no separate promotion step existed.
+Supabase has no such auto-deploy. After confirming via diff that
+`diagnostico.ts`/`reintentos.ts` are byte-identical to what was live and
+the only change is the FR-006 prompt wording, and re-running the full test
+suite (120/120 passing), both Edge Functions were redeployed with explicit
+user approval ("si no afecta o rompe algo procede con el redeploy"):
+`generate-routine` v18→v19, `regenerate-day` v8→v9. GA-006 is now fully
+live in production — code, documentation, and deployment all closed.
