@@ -815,6 +815,8 @@ function renderPerfil() {
         <p>Esto es lo que GymApp sabe de ti y usa para adaptar tus planes.</p>
       </header>
 
+      <div id="p-instalar"></div>
+
       <section class="g2-card">
         <h2 class="g2-seccion">Datos básicos</h2>
         <div class="campo">
@@ -956,10 +958,39 @@ function renderPerfil() {
     toggleMaquinas.classList.toggle('activo', perfilForm.evitarMaquinas);
   };
 
+  pintarTarjetaInstalar();
   document.getElementById('p-guardar').onclick = guardarPerfil;
   document.getElementById('p-salir').onclick = () => supabase.auth.signOut();
   renderPesoCorporal();
 }
+
+// Tarjeta "Instalar GymApp" (ver instalar.js). Vive en Perfil, el destino
+// al abrir la app, y desaparece sola cuando ya se abre como app instalada o
+// el navegador no permite instalar. Se repinta solo su contenedor para no
+// perder lo que el usuario esté escribiendo en el perfil.
+function pintarTarjetaInstalar() {
+  const div = document.getElementById('p-instalar');
+  if (!div || !window.instalacionApp) return;
+  const estadoInst = window.instalacionApp.estado();
+  if (estadoInst === 'disponible') {
+    div.innerHTML = `
+      <section class="g2-card">
+        <h2 class="g2-seccion">📲 Instala GymApp</h2>
+        <p class="subtitulo g2-nota">Ábrela desde tu pantalla de inicio como cualquier app, a pantalla completa.</p>
+        <button type="button" class="boton-secundario" id="p-btn-instalar">Instalar app</button>
+      </section>`;
+    document.getElementById('p-btn-instalar').onclick = () => window.instalacionApp.instalar();
+  } else if (estadoInst === 'ios') {
+    div.innerHTML = `
+      <details class="g2-card g2-disclosure">
+        <summary>📲 Instala GymApp en tu iPhone</summary>
+        <p class="subtitulo g2-nota">En Safari, toca el botón Compartir (el cuadro con la flecha hacia arriba) y elige “Agregar a inicio”.</p>
+      </details>`;
+  } else {
+    div.innerHTML = '';
+  }
+}
+if (window.instalacionApp) window.instalacionApp.alCambiar(pintarTarjetaInstalar);
 
 async function guardarPerfil() {
   const mensajeDiv = document.getElementById('p-mensaje');
@@ -1234,9 +1265,13 @@ async function cargarRutina() {
     if (estado.pantalla === 'perfil' || estado.pantalla === 'onboarding') render();
   }
 
+  // Filtrar por tipo es obligatorio: Fuerza, Core y Cardio tienen cada uno
+  // su propia rutina activa en `rutinas`. Sin este filtro, si el plan activo
+  // más reciente era Cardio o Core, Fuerza cargaba ESE plan al abrir la app
+  // y el plan de Fuerza (que sí estaba guardado) parecía perdido.
   const { data: rutina, error: rutinaError } = await supabase
     .from('rutinas').select('id')
-    .eq('usuario_id', userId).eq('activa', true)
+    .eq('usuario_id', userId).eq('activa', true).eq('tipo', 'fuerza')
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
   if (rutinaError) {
