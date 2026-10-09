@@ -1234,9 +1234,13 @@ async function cargarRutina() {
     if (estado.pantalla === 'perfil' || estado.pantalla === 'onboarding') render();
   }
 
+  // Filtrar por tipo es obligatorio: Fuerza, Core y Cardio tienen cada uno
+  // su propia rutina activa en `rutinas`. Sin este filtro, si el plan activo
+  // más reciente era Cardio o Core, Fuerza cargaba ESE plan al abrir la app
+  // y el plan de Fuerza (que sí estaba guardado) parecía perdido.
   const { data: rutina, error: rutinaError } = await supabase
     .from('rutinas').select('id')
-    .eq('usuario_id', userId).eq('activa', true)
+    .eq('usuario_id', userId).eq('activa', true).eq('tipo', 'fuerza')
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
   if (rutinaError) {
