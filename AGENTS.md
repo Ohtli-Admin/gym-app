@@ -71,3 +71,17 @@ before making design or implementation decisions:
 
 When in doubt about scope or architecture, these three documents govern —
 not assumptions carried over from chat history or memory.
+
+## Anti-waste rules (all agents)
+
+These apply alongside the rules above. When another rule in this file asks for more (reading context, running tests, reporting), that rule wins; reading what this file requires does not count as research.
+
+- Deliver exactly what was requested. Do not research unless asked.
+- Do not expand scope, do opportunistic refactors, or redesign architecture unless the deliverable requires it.
+- Do not modify files unrelated to the task.
+- If the request has no "done" criterion, propose one in a single line and continue.
+- Use the minimum tests that prove the change works; once they pass, stop. No extra test rounds.
+- Before saying "done", show the verification result.
+- Do not spawn subagents unless asked.
+- Search (grep/glob) before opening whole files.
+- Keep replies short: result first.
