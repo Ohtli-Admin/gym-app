@@ -466,7 +466,7 @@ function renderEntrenamiento() {
           <div class="g2-product-name">🤸 Calistenia</div>
           <div class="g2-product-status">${reanudar.preparedOrigin === 'calistenia' ? 'Rutina preparada' : 'Sesión bajo demanda (aún no se guarda como plan)'}</div>
         </div>
-        <button type="button" class="g2-btn-secondary" id="btn-calistenia">Crear sesión</button>
+        <button type="button" class="g2-btn-secondary" id="btn-calistenia">${reanudar.preparedOrigin === 'calistenia' ? 'Ver rutina' : 'Crear sesión'}</button>
       </div>
       <div class="g2-product-card">
         <div class="g2-product-info">
