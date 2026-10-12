@@ -1,6 +1,6 @@
 # [GA-007] El botón de Calistenia dice lo que hace
 
-- **Status:** REVIEW
+- **Status:** DONE — fusionado 2026-10-12
 - **Agent/Owner:** Claude (skill `cierre-de-tarea`)
 
 ## Objective
@@ -33,7 +33,7 @@ existente. Las tarjetas de planes ya usan "Ver plan" / "Crear plan".
 - [x] Sin rutina de Calistenia preparada, el botón dice "Crear sesión".
 - [x] Con rutina de Calistenia preparada, el botón dice "Ver rutina".
 - [x] `node --test` pasa completo.
-- [ ] Aceptación manual en el navegador por el usuario.
+- [x] Aceptación manual en el navegador por el usuario.
 
 ## Allowed files/areas
 
@@ -70,3 +70,11 @@ aceptación manual del usuario.
 1. Entrenamiento → Calistenia → genera una rutina y vuelve al hub sin empezarla.
 2. El botón de Calistenia dice "Ver rutina" y la tarjeta "Rutina preparada".
 3. Empieza y termina esa sesión; al volver al hub el botón dice "Crear sesión".
+
+---
+
+## Closure (2026-10-12)
+
+El product owner aceptó la tarea y pidió fusionar ("acepto y quiero que
+fusiones tu"). PR #4 fusionado a `main`. Vercel despliega `main` a
+producción automáticamente; Supabase no cambia (sólo `app.js`).
