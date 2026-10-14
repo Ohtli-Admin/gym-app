@@ -4,7 +4,8 @@ This directory coordinates implementation work across agents (Claude Code,
 OpenAI Codex, ChatGPT, humans). Every task is a single Markdown file that
 moves between status folders as its state changes.
 
-No implementation tasks exist yet — this is the coordination flow only.
+This board is for small fixes and chores. Features go through Spec Kit
+(`specs/NNN-*/tasks.md`). Where we left off and what is next: `ESTADO.md`.
 
 ## Status flow
 
