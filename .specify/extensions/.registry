@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "extensions": {
+    "relevo": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:102bac3e47ef9014dc10680c8cc42f8335da6c84b51f3a921bd2059e7aac986a",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "codex": [
+          "speckit.relevo.retomar",
+          "speckit.relevo.cerrar",
+          "speckit.relevo.estado"
+        ],
+        "claude": [
+          "speckit.relevo.retomar",
+          "speckit.relevo.cerrar",
+          "speckit.relevo.estado"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-10-14T17:32:13.234429+00:00"
+    }
+  }
+}

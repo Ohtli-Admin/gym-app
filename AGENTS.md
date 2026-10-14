@@ -49,8 +49,9 @@ file wins unless a human explicitly overrides it for a specific task.
   not build on unexpected uncommitted state without understanding it first.
 - Non-trivial changes require tests, or an explicit written explanation of
   why a test is not applicable.
-- Check `tasks/` and recent branches/commits before starting work to avoid
-  duplicating another agent's in-progress task.
+- Check `ESTADO.md`, `tasks/`, `specs/*/tasks.md`, open pull requests and
+  recent branches before starting work to avoid duplicating another agent's
+  in-progress task.
 - Never commit secrets, API keys, or Supabase service-role credentials to
   Git, in code, docs, or task files.
 - If completing a task would require breaking any rule in this file, stop
@@ -71,6 +72,29 @@ before making design or implementation decisions:
 
 When in doubt about scope or architecture, these three documents govern —
 not assumptions carried over from chat history or memory.
+
+## Claude ↔ Codex relay with Spec Kit (owner decision, 2026-10-14)
+
+Claude and Codex are interchangeable: both specify, plan, implement, test and close work under the same rules in this file. Claude is the default by the owner's preference; when Claude is unavailable (for example, out of usage), Codex continues exactly where it left off. No work waits for a particular model. This section replaces any earlier split of roles by model.
+
+**Spec Kit designs the work** (`speckit-*` skills in `.claude/skills` and `.agents/skills`):
+1. New feature: `speckit-specify` → `speckit-clarify` (required) → `speckit-plan` → `speckit-checklist` (when it touches security, data, AI or payments) → `speckit-tasks` → `speckit-analyze` (required; no CRITICAL findings) → `speckit-implement`, one user story per pull request → `speckit-converge` before calling the feature done.
+2. The owner approves the spec and the plan (one pull request or comment). After that, tasks, analyze and implement run without asking, except for what this section marks as risky.
+3. A feature already in flight is not re-specified. Follow its `tasks.md`; `speckit-converge` appends whatever is missing.
+4. Tasks in `tasks.md` belong to whoever picks them up. Older model tags such as `[CODEX …]` no longer restrict who does them.
+5. Small fixes and chores without a spec: a task file in `tasks/` (flow in `tasks/README.md`, skill `cierre-de-tarea`), with the same relay rules.
+
+**Relay** (Spec Kit extension `relevo` in `.specify/extensions/relevo/`; it runs by itself as a hook):
+- Before `specify` and `implement`: `speckit-relevo-retomar` reads `ESTADO.md` and open pull requests, then continues the task in progress or takes the next one under "Sigue".
+- After every Spec Kit command, and always before ending your turn even if the task is unfinished: `speckit-relevo-cerrar` (check off `tasks.md`, the **Relevo** block in the pull request, `ESTADO.md`, commit and push). Nothing stays only on the machine.
+- For "where did we leave off?": `speckit-relevo-estado`.
+- Work outside Spec Kit follows the same rules by hand.
+
+**Risk does not depend on the model.** Merging to `main`, deploying, and any change to the production Supabase project (schema, RLS, Edge Functions, data migrations), as listed under "Source of truth", wait for the owner's explicit "yes", whichever agent is working.
+
+**Cross review:** when both are available, the pull request is reviewed by the agent that did not write it (`@codex review` on GitHub, or Claude).
+
+**Replies:** at most 8 lines: result, verification (command and real output), risks, and what you need from the owner.
 
 ## Anti-waste rules (all agents)
 

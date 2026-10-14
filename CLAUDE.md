@@ -8,7 +8,9 @@ Before working in this repository:
    `docs/CURRENT_STATE_RECONCILIATION.md`, and
    `docs/REENGINEERING_DECISION_FRAME.md` are relevant to the task before
    proposing or making changes.
-3. If a task file exists under `tasks/`, read it fully (scope, out-of-scope,
+3. Read `ESTADO.md` (where we left off and what is next). If a task file
+   exists under `tasks/` or the work is a Spec Kit task in `specs/*/tasks.md`,
+   read it fully (scope, out-of-scope,
    acceptance criteria, allowed files) before touching code.
 
 ## How to work

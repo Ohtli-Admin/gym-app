@@ -1,0 +1,66 @@
+schema_version: "1.0"
+
+extension:
+  id: relevo
+  name: "Relevo Claude/Codex"
+  version: "1.0.0"
+  description: "Cualquier agente retoma el trabajo donde quedó: lee el estado antes de implementar y deja ESTADO.md, tasks.md y la rama al día al terminar cada paso."
+  author: Ohtli-Admin
+  repository: https://github.com/Ohtli-Admin
+  license: MIT
+
+requires:
+  speckit_version: ">=1.0.0"
+  tools:
+    - name: git
+      required: true
+
+provides:
+  commands:
+    - name: speckit.relevo.retomar
+      file: commands/speckit.relevo.retomar.md
+      description: "Lee ESTADO.md, ramas y PRs en curso y decide si continuar o empezar"
+    - name: speckit.relevo.cerrar
+      file: commands/speckit.relevo.cerrar.md
+      description: "Actualiza tasks.md y ESTADO.md, hace commit y push y deja el siguiente paso escrito"
+    - name: speckit.relevo.estado
+      file: commands/speckit.relevo.estado.md
+      description: "Responde en 6 líneas dónde nos quedamos y qué sigue en este proyecto"
+
+hooks:
+  before_specify:
+    command: speckit.relevo.retomar
+    optional: false
+    description: "Revisar si ya hay trabajo en curso antes de abrir otra funcionalidad"
+  before_implement:
+    command: speckit.relevo.retomar
+    optional: false
+    description: "Retomar la tarea en curso o tomar la siguiente sin preguntar"
+  after_specify:
+    command: speckit.relevo.cerrar
+    optional: false
+    description: "Dejar la spec subida y el siguiente paso escrito"
+  after_clarify:
+    command: speckit.relevo.cerrar
+    optional: false
+    description: "Dejar las aclaraciones subidas"
+  after_plan:
+    command: speckit.relevo.cerrar
+    optional: false
+    description: "Dejar el plan subido y el siguiente paso escrito"
+  after_tasks:
+    command: speckit.relevo.cerrar
+    optional: false
+    description: "Publicar la lista de tareas en ESTADO.md"
+  after_analyze:
+    command: speckit.relevo.cerrar
+    optional: false
+    description: "Registrar el resultado del análisis antes de implementar"
+  after_implement:
+    command: speckit.relevo.cerrar
+    optional: false
+    description: "Marcar tareas, actualizar ESTADO.md y subir la rama"
+  after_converge:
+    command: speckit.relevo.cerrar
+    optional: false
+    description: "Registrar las tareas nuevas que encontró converge"

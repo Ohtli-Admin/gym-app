@@ -1,0 +1,86 @@
+installed:
+- relevo
+settings:
+  auto_execute_hooks: true
+hooks:
+  before_specify:
+  - extension: relevo
+    command: speckit.relevo.retomar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.retomar?
+    description: Revisar si ya hay trabajo en curso antes de abrir otra funcionalidad
+    condition: null
+  before_implement:
+  - extension: relevo
+    command: speckit.relevo.retomar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.retomar?
+    description: Retomar la tarea en curso o tomar la siguiente sin preguntar
+    condition: null
+  after_specify:
+  - extension: relevo
+    command: speckit.relevo.cerrar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.cerrar?
+    description: Dejar la spec subida y el siguiente paso escrito
+    condition: null
+  after_clarify:
+  - extension: relevo
+    command: speckit.relevo.cerrar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.cerrar?
+    description: Dejar las aclaraciones subidas
+    condition: null
+  after_plan:
+  - extension: relevo
+    command: speckit.relevo.cerrar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.cerrar?
+    description: Dejar el plan subido y el siguiente paso escrito
+    condition: null
+  after_tasks:
+  - extension: relevo
+    command: speckit.relevo.cerrar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.cerrar?
+    description: Publicar la lista de tareas en ESTADO.md
+    condition: null
+  after_analyze:
+  - extension: relevo
+    command: speckit.relevo.cerrar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.cerrar?
+    description: Registrar el resultado del análisis antes de implementar
+    condition: null
+  after_implement:
+  - extension: relevo
+    command: speckit.relevo.cerrar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.cerrar?
+    description: Marcar tareas, actualizar ESTADO.md y subir la rama
+    condition: null
+  after_converge:
+  - extension: relevo
+    command: speckit.relevo.cerrar
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.relevo.cerrar?
+    description: Registrar las tareas nuevas que encontró converge
+    condition: null
