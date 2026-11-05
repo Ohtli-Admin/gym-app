@@ -93,7 +93,7 @@ function nombreEjercicioLibreria(registro) {
 }
 
 // ---- Carga del snapshot (una vez por sesión) ----
-const libreria = { registros: null, conImagen: new Set(), error: null, cargando: null, filtros: { texto: '', grupo: null, equipo: null }, fichaId: null, limite: 40 };
+const libreria = { registros: null, conImagen: new Set(), error: null, cargando: null, filtros: { texto: '', grupo: null, equipo: null }, fichaId: null, limite: 40, espera: null };
 
 function cargarLibreria() {
   if (libreria.registros || libreria.cargando) return libreria.cargando || Promise.resolve();
@@ -122,11 +122,17 @@ function marcadorSinImagen(registro) {
 }
 
 function renderLibreria() {
+  // Una búsqueda pendiente de la vista anterior ya no aplica.
+  clearTimeout(libreria.espera);
   if (!libreria.registros) {
     app.innerHTML = libreria.error
-      ? `<header class="g3-header"><h1>Librería</h1></header><div class="mensaje error">${escaparHtml(libreria.error)}</div>`
+      ? `<header class="g3-header"><h1>Librería</h1></header><div class="mensaje error">${escaparHtml(libreria.error)}</div><button type="button" class="boton-secundario" id="lib-reintentar">Reintentar</button>`
       : '<header class="g3-header"><h1>Librería</h1></header><div class="pantalla-carga"><div class="spinner"></div></div>';
-    if (!libreria.error) cargarLibreria();
+    if (libreria.error) {
+      document.getElementById('lib-reintentar').onclick = () => { libreria.error = null; renderLibreria(); };
+    } else {
+      cargarLibreria();
+    }
     return;
   }
   const f = libreria.filtros;
@@ -168,10 +174,12 @@ function renderLibreria() {
   };
 
   const buscar = document.getElementById('lib-buscar');
-  let espera = null;
   buscar.oninput = () => {
-    clearTimeout(espera);
-    espera = setTimeout(() => { f.texto = buscar.value; libreria.limite = 40; pintarResultados(); }, 150);
+    // El texto se guarda al momento; solo el repintado espera.
+    f.texto = buscar.value;
+    libreria.limite = 40;
+    clearTimeout(libreria.espera);
+    libreria.espera = setTimeout(() => { if (buscar.isConnected) pintarResultados(); }, 150);
   };
   ['grupo', 'equipo'].forEach((campo) => {
     app.querySelectorAll(`[data-filtro-${campo}]`).forEach((btn) => {
