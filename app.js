@@ -1987,7 +1987,13 @@ function renderAbdomen() {
 // =========================================================================
 // Pantalla Registro — con precarga de lo ya guardado (corrige el bug)
 // =========================================================================
+// Cada renderRegistro() invalida al anterior: con Anterior/Siguiente, una
+// respuesta lenta del ejercicio A no debe pintar (ni guardar) sobre el B.
+let registroVigente = 0;
+
 async function renderRegistro() {
+  const token = ++registroVigente;
+  const vigente = () => token === registroVigente && estado.pantalla === 'registro';
   app.innerHTML = '';
 
   if (!estado.ejercicioActivo) {
@@ -2047,7 +2053,7 @@ async function renderRegistro() {
   supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
     .then(({ data }) => {
       const cont = document.getElementById('reg-imagenes');
-      if (!cont) return;
+      if (!cont || !vigente()) return;
       if (!data || data.length === 0) {
         cont.innerHTML = '<div class="sin-imagen">Sin foto de referencia para este ejercicio todavía.</div>';
         return;
@@ -2081,7 +2087,7 @@ async function renderRegistro() {
     .eq('ejercicio_id', ej.ejercicio_id)
     .then(({ data }) => {
       const cont = document.getElementById('reg-progreso');
-      if (!cont || !data) return;
+      if (!cont || !data || !vigente()) return;
 
       const hayPeso = data.some((s) => s.peso_kg != null && s.peso_kg > 0);
       // Si nunca se registra peso (ej. Wall Angel, puro peso corporal), usamos
@@ -2188,6 +2194,7 @@ async function renderRegistro() {
       const { data } = await supabase
         .from('ejercicios').select('id, nombre, equipo')
         .ilike('nombre', `%${texto}%`).limit(5);
+      if (!vigente()) return;
       if (!data || data.length === 0) {
         resDiv.innerHTML = '<p class="subtitulo" style="margin-top:8px">Sin resultados.</p>';
         return;
@@ -2214,6 +2221,7 @@ async function renderRegistro() {
     .from('sesiones_entrenamiento').select('id')
     .eq('usuario_id', userId).eq('rutina_id', ej.rutina_id).eq('fecha', hoy).eq('dia', ej.dia)
     .maybeSingle();
+  if (!vigente()) return;
 
   let sesionId;
   if (sesionExistente) {
@@ -2223,6 +2231,7 @@ async function renderRegistro() {
       .from('sesiones_entrenamiento')
       .insert({ usuario_id: userId, rutina_id: ej.rutina_id, fecha: hoy, dia: ej.dia })
       .select('id').single();
+    if (!vigente()) return;
     if (error) {
       document.getElementById('reg-tabla').innerHTML = `<div class="mensaje error">No se pudo crear la sesión: ${error.message}</div>`;
       return;
@@ -2234,12 +2243,14 @@ async function renderRegistro() {
   const { data: seriesGuardadas } = await supabase
     .from('series_registradas').select('id, numero_serie, peso_kg, repeticiones, rir')
     .eq('sesion_id', sesionId).eq('ejercicio_id', ej.ejercicio_id).order('numero_serie');
+  if (!vigente()) return;
 
   const guardadasPorNumero = {};
   for (const s of seriesGuardadas || []) guardadasPorNumero[s.numero_serie] = s;
 
   // ---- Sugerencia de peso, basada en tu RIR de la última sesión (no hoy) ----
   const sugerencia = await sugerirProgresion(ej.ejercicio_id, userId, hoy, ej.peso_asistido);
+  if (!vigente()) return;
   if (sugerencia) {
     const cont = document.getElementById('reg-guia');
     cont.insertAdjacentHTML('beforebegin', `<div class="g3-sugerencia">${escaparHtml(sugerencia.texto)}</div>`);

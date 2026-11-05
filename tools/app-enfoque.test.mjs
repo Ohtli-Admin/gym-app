@@ -60,3 +60,12 @@ test('cambiar por alternativa se queda entrenando con el ejercicio nuevo', () =>
   const usar = extraerFuncion('usarAlternativa');
   assert.match(usar, /estado\.pantalla = 'registro'/);
 });
+
+test('un renderRegistro viejo no pinta sobre el ejercicio nuevo', () => {
+  const reg = extraerFuncion('renderRegistro');
+  assert.match(reg, /const token = \+\+registroVigente;/);
+  // Después de cada espera a Supabase se revisa que el render siga vigente.
+  const esperas = (reg.match(/= await /g) || []).length;
+  const revisiones = (reg.match(/if \(!vigente\(\)\) return;/g) || []).length;
+  assert.ok(esperas >= 4 && revisiones >= esperas, `${esperas} esperas, ${revisiones} revisiones`);
+});
