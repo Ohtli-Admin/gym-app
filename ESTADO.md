@@ -1,6 +1,6 @@
 # Estado — GymApp
 
-Actualizado: 2026-10-14 por claude · Prioridad: activo
+Actualizado: 2026-11-05 por claude · Prioridad: activo
 Lo mantiene `speckit-relevo-cerrar`. Máximo 40 líneas; la historia vive en git.
 
 ## Último cierre
@@ -9,6 +9,7 @@ Lo mantiene `speckit-relevo-cerrar`. Máximo 40 líneas; la historia vive en git
 - 2026-10-09 — El plan de Fuerza ya no desaparece al recargar (PR #2).
 
 ## En curso
+- Rama `003-rediseno-ui`: rediseño de la interfaz aprobado por el dueño (maqueta en el hilo del proyecto). US1 (estilo, Hoy/Plan/Progreso/Perfil) en PR; siguen US2 librería, US3 modo entrenando, US4 rutinas desde la librería (cambio de base, requiere aprobación).
 - Rama `002-legacy-exercise-census` (sin PR): spec y plan del censo de referencias legacy de ejercicios, del 2 oct; le faltan `tasks.md` y `analyze`. Va 8 commits detrás de `main`.
 
 ## Sigue
@@ -26,3 +27,4 @@ Lo mantiene `speckit-relevo-cerrar`. Máximo 40 líneas; la historia vive en git
 |---|---|
 | 001 cierre GA-006 | 16/16 |
 | 002 censo legacy | spec y plan, sin tareas |
+| 003 rediseño UI | US1 6/6, US2-US4 pendientes |

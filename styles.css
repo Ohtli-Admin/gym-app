@@ -1,20 +1,25 @@
 :root {
-  --bg: #161A17;
-  --surface: #1F2420;
-  --surface-2: #2A3129;
-  --border: #3A4239;
-  --text: #EDEFEA;
-  --text-muted: #9BA69B;
-  --accent: #C9A227;
-  --accent-soft: #3A331A;
-  --success: #4CAF6D;
-  --success-soft: #1E2E22;
-  --warning: #D9A441;
-  --warning-soft: #332B18;
-  --danger: #E06B5D;
-  --danger-soft: #332020;
-  --radius: 14px;
-  --radius-sm: 9px;
+  /* Rediseño 003: misma identidad oscura con dorado, con más contraste
+     entre superficies y un dorado más cálido. */
+  --bg: #131714;
+  --surface: #1C211D;
+  --surface-2: #252B26;
+  --border: #2E352F;
+  --text: #EEF0EA;
+  --text-muted: #9DA79E;
+  --accent: #E3C45C;
+  --accent-ink: #1B1A10;
+  --accent-soft: #3A3420;
+  --success: #9FD7AE;
+  --success-soft: #24382A;
+  --warning: #E2B04F;
+  --warning-soft: #352C17;
+  --danger: #EB7F72;
+  --danger-soft: #3A2220;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --font-body: "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -24,7 +29,7 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -548,3 +553,124 @@ textarea.input-modal {
 .g2-opcion strong { font-size: 14px; }
 .g2-opcion span { font-size: 12px; color: var(--text-muted); }
 .g2-opcion.activo { border-color: var(--accent); background: var(--accent-soft); }
+
+
+/* =========================================================================
+   Rediseño 003 — estilo y navegación (Hoy · Plan · Progreso · Perfil)
+   ========================================================================= */
+body { font-size: 15px; }
+#app { padding: 22px 18px 110px; position: relative; }
+button { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.titulo, .g2-appbar h1, .g3-header h1, .g3-subheader h2, .g3-hero h2, .g2-current-exercise h1 {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+  line-height: 1;
+}
+.titulo { font-size: 28px; margin-bottom: 6px; }
+.g2-appbar h1 { font-size: 34px; margin-bottom: 6px; }
+.g2-seccion { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.04em; font-size: 17px; }
+.etiqueta { letter-spacing: 0.08em; font-weight: 600; }
+
+.boton-primario { background: var(--accent); color: var(--accent-ink); border-radius: 12px; font-size: 16px; padding: 15px; }
+.chip.activo { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.mensaje.info { background: var(--surface-2); color: var(--text); }
+.g2-card { border: 1px solid var(--border); }
+
+/* Barra de abajo */
+.nav-inferior { padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); background: rgba(28, 33, 29, 0.96); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.nav-item { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; min-width: 64px; padding: 6px 8px; border-radius: 12px; }
+.nav-item .icono { display: block; width: 24px; height: 24px; }
+.nav-item .icono svg { width: 24px; height: 24px; fill: currentColor; }
+.nav-item.activo { color: var(--accent); }
+
+/* Encabezados */
+.g3-header { margin-bottom: 14px; }
+.g3-header h1 { font-size: 34px; }
+.g3-fecha { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+.g3-fecha::first-letter { text-transform: uppercase; }
+.g3-subheader { margin: 4px 0 14px; padding-right: 44px; }
+.g3-subheader h2 { font-size: 22px; }
+.g3-subheader p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.g3-seccion { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 14px; color: var(--text-muted); font-weight: 600; margin: 22px 0 10px; }
+.g3-nota { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.g3-link { background: none; border: none; color: var(--text-muted); font-size: 13px; font-weight: 600; padding: 10px 0 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Pestañas de arriba (Plan, Progreso) */
+.g3-tabs { display: flex; gap: 6px; overflow-x: auto; margin: 0 -18px 4px; padding: 2px 18px 8px; scrollbar-width: none; }
+.g3-tabs::-webkit-scrollbar { display: none; }
+.g3-tab { flex: none; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.g3-tab.activo { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* Hoy: semana */
+.g3-semana { display: flex; gap: 5px; margin-bottom: 16px; }
+.g3-semana-dia { flex: 1; background: var(--surface); border-radius: 10px; padding: 7px 0; text-align: center; display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-muted); }
+.g3-semana-dia b { font-size: 13px; color: var(--text); }
+.g3-semana-dia.hecho { background: var(--success-soft); color: var(--success); }
+.g3-semana-dia.hecho b { color: var(--success); }
+.g3-semana-dia.hoy { outline: 2px solid var(--accent); outline-offset: -2px; }
+.g3-semana-dia.futuro { opacity: 0.6; }
+
+/* Hoy: tarjeta principal */
+.g3-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-bottom: 8px; }
+.g3-hero-img { height: 0; background: var(--surface-2) center / cover no-repeat; }
+.g3-hero-img[style] { height: 160px; } /* solo cuando hay foto del primer ejercicio */
+.g3-hero-info { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+.g3-hero h2 { font-size: 26px; }
+.g3-hero p { font-size: 14px; color: var(--text-muted); margin-bottom: 6px; }
+.g3-hero-vacio { padding: 20px 16px; display: flex; flex-direction: column; gap: 8px; }
+.g3-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+
+/* Filas tocables */
+.g3-lista { display: flex; flex-direction: column; gap: 8px; }
+.g3-fila { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; color: var(--text); cursor: pointer; }
+.g3-fila-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.g3-fila-info strong { font-size: 15px; }
+.g3-fila-info span { font-size: 13px; color: var(--text-muted); }
+.g3-chevron { color: var(--text-muted); font-size: 22px; }
+
+/* Plan: días y ejercicios */
+.tabs-dias { gap: 6px; margin-bottom: 10px; }
+.tab-dia { border-radius: 12px; padding: 8px 14px; }
+.tab-dia.activo { background: var(--accent); border-color: var(--accent); }
+.tab-dia.activo strong, .tab-dia.activo span { color: var(--accent-ink); }
+.g3-dia-titulo { font-family: var(--font-display); text-transform: uppercase; font-size: 20px; font-weight: 700; letter-spacing: 0.01em; margin: 6px 0 12px; }
+.tarjeta-ejercicio { padding: 10px; gap: 12px; border-radius: 14px; margin-bottom: 8px; }
+.tarjeta-ejercicio img, .tarjeta-ejercicio .ph { width: 72px; height: 52px; border-radius: 10px; flex: none; }
+.tarjeta-ejercicio .ph svg { width: 24px; height: 24px; fill: var(--text-muted); opacity: 0.7; }
+.tarjeta-ejercicio .nombre { font-size: 15px; line-height: 1.2; }
+.tarjeta-ejercicio .detalle { font-size: 13px; }
+
+/* Menú ⋯ de ajustes del plan */
+.g3-menu { position: absolute; top: 20px; right: 18px; margin: 0; z-index: 5; }
+.g3-menu summary { list-style: none; width: 40px; height: 40px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; font-size: 20px; line-height: 1; color: var(--text); cursor: pointer; padding: 0; }
+.g3-menu summary::-webkit-details-marker { display: none; }
+.g3-menu summary::before { content: none !important; }
+.g3-menu[open] summary { background: var(--surface-2); }
+.g3-menu-panel { position: absolute; right: 0; top: 46px; width: 240px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 6px; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; }
+.g3-menu-panel button { background: none; border: none; color: var(--text); text-align: left; padding: 11px 12px; border-radius: 10px; font-size: 14px; cursor: pointer; }
+.g3-menu-panel button:hover { background: rgba(255, 255, 255, 0.05); }
+.g3-menu-panel button:disabled { opacity: 0.45; }
+
+/* Progreso */
+.g3-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 10px; }
+.g3-stats div { background: var(--surface); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; }
+.g3-stats span { font-size: 12px; color: var(--text-muted); }
+.g3-stats b { font-family: var(--font-display); font-size: 34px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.g3-stats small { font-size: 12px; color: var(--text-muted); }
+.g3-barras { display: flex; align-items: flex-end; gap: 8px; height: 110px; background: var(--surface); border-radius: 14px; padding: 12px 12px 8px; }
+.g3-barra { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
+.g3-barra i { display: block; width: 100%; min-height: 3px; background: var(--accent); border-radius: 4px 4px 0 0; }
+.g3-barra span { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tarjeta-sesion { border-radius: 14px; }
+
+/* Registro (se rehace en la parte 3; aquí solo se alinea con el estilo) */
+.btn-guardar-serie.hecha { background: var(--success-soft); color: var(--success); border-color: transparent; }
+.banner-descanso { background: var(--accent); color: var(--accent-ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .spinner-mini { animation-duration: 2s; }
+}
