@@ -2524,12 +2524,14 @@ function resumenConstancia(fechas, hoyStr) {
     const k = formatoFecha(d);
     semanas.push({ semana: k, sesiones: porSemana[k] || 0 });
   }
-  // La semana actual cuenta para la racha solo si ya tiene sesiones.
+  // La racha se cuenta sobre todas las fechas, no solo las 6 semanas de la
+  // gráfica. La semana actual cuenta solo si ya tiene sesiones.
   let racha = 0;
-  for (let i = semanas.length - 1; i >= 0; i--) {
-    if (semanas[i].sesiones > 0) racha++;
-    else if (i === semanas.length - 1) continue;
-    else break;
+  const cursor = new Date(inicio);
+  if (!porSemana[formatoFecha(cursor)]) cursor.setDate(cursor.getDate() - 7);
+  while (porSemana[formatoFecha(cursor)]) {
+    racha++;
+    cursor.setDate(cursor.getDate() - 7);
   }
   return { delMes, racha, semanas };
 }
@@ -2542,6 +2544,12 @@ async function renderHistorial() {
   const { data: sesiones, error } = await supabase
     .from('sesiones_entrenamiento').select('id, fecha, dia, rutinas(tipo, nombre)')
     .eq('usuario_id', userId).order('fecha', { ascending: false }).limit(30);
+  // Las estadísticas usan todas las fechas (solo esa columna), no solo las
+  // 30 sesiones recientes de la lista: Fuerza, Core y Cardio son sesiones
+  // separadas el mismo día.
+  const { data: todasFechas } = error ? { data: null } : await supabase
+    .from('sesiones_entrenamiento').select('fecha')
+    .eq('usuario_id', userId).order('fecha', { ascending: false });
   if (estado.pantalla !== 'historial') return;
 
   if (error) { app.innerHTML = `${encabezadoProgreso()}<div class="mensaje error">${escaparHtml(error.message)}</div>`; conectarPestanasProgreso(); return; }
@@ -2552,7 +2560,7 @@ async function renderHistorial() {
   }
 
   const hoyStr = formatoFecha(new Date());
-  const r = resumenConstancia(sesiones.map((s) => s.fecha), hoyStr);
+  const r = resumenConstancia((todasFechas || sesiones).map((s) => s.fecha), hoyStr);
   const maxSem = Math.max(1, ...r.semanas.map((x) => x.sesiones));
   app.innerHTML = `
     ${encabezadoProgreso()}
