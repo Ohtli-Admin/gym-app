@@ -64,8 +64,9 @@ test('cambiar por alternativa se queda entrenando con el ejercicio nuevo', () =>
 test('un renderRegistro viejo no pinta sobre el ejercicio nuevo', () => {
   const reg = extraerFuncion('renderRegistro');
   assert.match(reg, /const token = \+\+registroVigente;/);
-  // Después de cada espera a Supabase se revisa que el render siga vigente.
-  const esperas = (reg.match(/= await /g) || []).length;
+  // Después de cada lectura a Supabase se revisa que el render siga vigente
+  // (las escrituras por un toque del usuario, `{ error } = await`, no cuentan).
+  const esperas = (reg.match(/(?<!\{ error \} )= await /g) || []).length;
   const revisiones = (reg.match(/if \(!vigente\(\)\) return;/g) || []).length;
   assert.ok(esperas >= 4 && revisiones >= esperas, `${esperas} esperas, ${revisiones} revisiones`);
 });
