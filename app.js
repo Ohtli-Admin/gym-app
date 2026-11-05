@@ -309,6 +309,7 @@ function renderNav() {
     </nav>`;
   navContainer.querySelectorAll('[data-nav]').forEach((btn) => {
     btn.onclick = () => {
+      libreria.eligiendoPara = null; // salir por la barra cancela "elegir de la librería"
       if (btn.dataset.nav === 'especial') abrirEspecial();
       else irAPantalla(btn.dataset.nav);
     };
@@ -637,10 +638,10 @@ function renderEntrenamiento() {
     // Imagen del primer ejercicio del día, si existe (no bloquea el render).
     const primero = fuerza.dia.ejercicios?.[0];
     if (primero) {
-      supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', primero.ejercicio_id).order('orden').limit(1)
-        .then(({ data }) => {
+      primeraImagenEjercicio(primero, false)
+        .then((url) => {
           const cont = document.getElementById('hoy-hero-img');
-          if (cont && data && data[0]) cont.style.backgroundImage = `url("${encodeURI(data[0].url)}")`;
+          if (cont && url) cont.style.backgroundImage = `url("${encodeURI(url)}")`;
         });
     }
   }
@@ -1455,6 +1456,7 @@ async function cargarRutina() {
   const { data: ejercicios, error: ejerciciosError } = await supabase
     .from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)')
     .eq('rutina_id', rutina.id).order('dia').order('orden');
+  if (!ejerciciosError) await prepararLibreriaDeRutina(ejercicios);
 
   if (ejerciciosError) {
     estado.errorRutina = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
@@ -1559,6 +1561,7 @@ async function cargarRutinaAbdomen() {
   const { data: ejercicios, error: ejerciciosError } = await supabase
     .from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)')
     .eq('rutina_id', rutina.id).order('dia').order('orden');
+  if (!ejerciciosError) await prepararLibreriaDeRutina(ejercicios);
 
   if (ejerciciosError) {
     ab.error = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
@@ -1867,7 +1870,7 @@ function renderRutina() {
 
   const listaDiv = document.getElementById('lista-ejercicios');
   dia.ejercicios.forEach((ej) => {
-    const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+    const nombre = escaparHtml(nombreEjercicio(ej));
     const altTxt = ej.alternativas?.length ? ` · ${ej.alternativas.length} alternativa(s)` : '';
     const tarjeta = h(`
       <div class="tarjeta-ejercicio">
@@ -1887,11 +1890,11 @@ function renderRutina() {
     listaDiv.appendChild(tarjeta);
 
     // Foto miniatura real, si existe (no bloquea el render de la tarjeta).
-    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
-      .then(({ data }) => {
-        if (data && data[0]) {
+    primeraImagenEjercicio(ej)
+      .then((url) => {
+        if (url) {
           const ph = tarjeta.querySelector('.ph');
-          const img = h(`<img src="${data[0].url}" />`);
+          const img = h(`<img src="${url}" alt="" />`);
           ph.replaceWith(img);
         }
       });
@@ -1954,7 +1957,7 @@ function renderAbdomen() {
 
   const listaDiv = document.getElementById('lista-ejercicios-ab');
   dia.ejercicios.forEach((ej) => {
-    const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+    const nombre = escaparHtml(nombreEjercicio(ej));
     const altTxt = ej.alternativas?.length ? ` · ${ej.alternativas.length} alternativa(s)` : '';
     const tarjeta = h(`
       <div class="tarjeta-ejercicio">
@@ -1973,11 +1976,11 @@ function renderAbdomen() {
     };
     listaDiv.appendChild(tarjeta);
 
-    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
-      .then(({ data }) => {
-        if (data && data[0]) {
+    primeraImagenEjercicio(ej)
+      .then((url) => {
+        if (url) {
           const ph = tarjeta.querySelector('.ph');
-          const img = h(`<img src="${data[0].url}" />`);
+          const img = h(`<img src="${url}" alt="" />`);
           ph.replaceWith(img);
         }
       });
@@ -1987,6 +1990,74 @@ function renderAbdomen() {
 // =========================================================================
 // Pantalla Registro — con precarga de lo ya guardado (corrige el bug)
 // =========================================================================
+// ---- Ejercicios de la librería dentro de la rutina (rediseño 003, US4) ----
+// Una fila de rutina_ejercicios puede traer `libreria_ejercicio_id` (columna
+// nueva, aditiva). Si viene, se muestra y se registra ese ejercicio de la
+// librería; `ejercicio_id` (legacy) se conserva tal cual. Mientras la columna
+// no exista en la base, todo se comporta como antes.
+function detectarColumnaLibreria(filas) {
+  if (filas && filas.length) estado.columnaLibreria = 'libreria_ejercicio_id' in filas[0];
+}
+
+async function prepararLibreriaDeRutina(filas) {
+  detectarColumnaLibreria(filas);
+  if ((filas || []).some((f) => f.libreria_ejercicio_id)) await cargarLibreria();
+}
+
+function registroLibreriaDe(ej) {
+  if (!ej?.libreria_ejercicio_id || !libreria.registros) return null;
+  return libreria.registros.find((r) => r.exercise_id === ej.libreria_ejercicio_id) || null;
+}
+
+function nombreEjercicio(ej) {
+  const reg = registroLibreriaDe(ej);
+  if (reg) return nombreEjercicioLibreria(reg);
+  if (ej?.libreria_ejercicio_id) return 'Ejercicio de la librería';
+  return ej?.ejercicios?.nombre || ej?.ejercicio_id || '';
+}
+
+// Primera imagen del ejercicio (lámina de la librería o foto legacy).
+function primeraImagenEjercicio(ej, mini = true) {
+  if (ej.libreria_ejercicio_id) return Promise.resolve(imagenLibreria(ej.libreria_ejercicio_id, mini));
+  return supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
+    .then(({ data }) => data?.[0]?.url || null);
+}
+
+// Filtra series_registradas por el ejercicio que de verdad se hizo: el de la
+// librería si se eligió uno; si no, el legacy (sin contar series hechas con un
+// ejercicio de la librería sobre esa misma fila).
+function filtrarSeriesDe(consulta, ej) {
+  if (ej.libreria_ejercicio_id) return consulta.eq('libreria_ejercicio_id', ej.libreria_ejercicio_id);
+  consulta = consulta.eq('ejercicio_id', ej.ejercicio_id);
+  return estado.columnaLibreria ? consulta.is('libreria_ejercicio_id', null) : consulta;
+}
+
+// Abre la Librería para elegir con qué ejercicio reemplazar el de la rutina.
+function elegirDeLibreria() {
+  detenerDescanso();
+  libreria.eligiendoPara = estado.ejercicioActivo;
+  estado.pantalla = 'libreria';
+  render();
+  window.scrollTo(0, 0);
+}
+
+async function cambiarPorLibreria(exerciseId) {
+  const ej = libreria.eligiendoPara;
+  if (!ej) return;
+  const { error } = await supabase.from('rutina_ejercicios')
+    .update({ libreria_ejercicio_id: exerciseId })
+    .eq('id', ej.id);
+  if (error) return error;
+  libreria.eligiendoPara = null;
+  if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
+  else await cargarRutina();
+  estado.ejercicioActivo = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id) || estado.ejercicioActivo;
+  estado.pantalla = 'registro';
+  render();
+  window.scrollTo(0, 0);
+  return null;
+}
+
 // Cada renderRegistro() invalida al anterior: con Anterior/Siguiente, una
 // respuesta lenta del ejercicio A no debe pintar (ni guardar) sobre el B.
 let registroVigente = 0;
@@ -2006,7 +2077,11 @@ async function renderRegistro() {
   }
 
   const ej = estado.ejercicioActivo;
-  const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+  const nombre = nombreEjercicio(ej);
+  const regLib = registroLibreriaDe(ej);
+  const grupoMuscular = regLib
+    ? (GRUPOS_LIBRERIA.find((g) => g.id === gruposDeEjercicio(regLib)[0])?.etiqueta || '').toLowerCase()
+    : ej.ejercicios?.grupo_muscular;
   const delDia = ejerciciosDelDiaRegistro();
   const pos = delDia.findIndex((x) => x.id === ej.id);
   const anterior = pos > 0 ? delDia[pos - 1] : null;
@@ -2026,7 +2101,7 @@ async function renderRegistro() {
       <div id="reg-imagenes"><div class="sin-imagen">Buscando fotos de referencia…</div></div>
       <h1 class="titulo">${escaparHtml(nombre)}</h1>
       <p class="subtitulo">Objetivo: ${ej.series} series × ${escaparHtml(ej.reps_objetivo)} reps</p>
-      <div id="reg-guia" class="guia-musculo">Trabaja: <strong>${escaparHtml(ej.ejercicios?.grupo_muscular || 'este grupo muscular')}</strong>. Movimientos controlados; siente el músculo, no levantes el peso como sea.</div>
+      <div id="reg-guia" class="guia-musculo">Trabaja: <strong>${escaparHtml(grupoMuscular || 'este grupo muscular')}</strong>. Movimientos controlados; siente el músculo, no levantes el peso como sea.</div>
       <div id="reg-progreso"></div>
       <div id="reg-mensaje"></div>
       <div class="tabla-series" id="reg-tabla"><div class="pantalla-carga"><div class="spinner"></div></div></div>
@@ -2050,7 +2125,12 @@ async function renderRegistro() {
   };
 
   // ---- Imágenes principales (grandes) ----
-  supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
+  if (ej.libreria_ejercicio_id) {
+    const url = imagenLibreria(ej.libreria_ejercicio_id, false);
+    document.getElementById('reg-imagenes').innerHTML = url
+      ? `<img class="g3-ficha-img" src="${url}" alt="Lámina de ${escaparHtml(nombre)}" />`
+      : '<div class="sin-imagen">Este ejercicio de la librería todavía no tiene lámina.</div>';
+  } else supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
     .then(({ data }) => {
       const cont = document.getElementById('reg-imagenes');
       if (!cont || !vigente()) return;
@@ -2082,9 +2162,8 @@ async function renderRegistro() {
   };
 
   // ---- Progreso / estancamiento (por sesión) + estancamiento por semanas ----
-  supabase.from('series_registradas')
-    .select('peso_kg, repeticiones, sesiones_entrenamiento!inner(fecha)')
-    .eq('ejercicio_id', ej.ejercicio_id)
+  filtrarSeriesDe(supabase.from('series_registradas')
+    .select('peso_kg, repeticiones, sesiones_entrenamiento!inner(fecha)'), ej)
     .then(({ data }) => {
       const cont = document.getElementById('reg-progreso');
       if (!cont || !data || !vigente()) return;
@@ -2147,10 +2226,33 @@ async function renderRegistro() {
   contAlt.innerHTML = `
     <div class="bloque-alternativas">
       <span class="etiqueta">Cambiar por</span>
+      ${estado.columnaLibreria ? `<button type="button" class="g3-fila" id="alt-libreria">
+        <span class="g3-fila-info"><strong>Elegir de la librería</strong><span>Busca entre todos los ejercicios con su lámina</span></span>
+        <span class="g3-chevron" aria-hidden="true">›</span>
+      </button>` : ''}
+      ${ej.libreria_ejercicio_id ? `<button type="button" class="boton-secundario" id="alt-original">Volver a ${escaparHtml(ej.ejercicios?.nombre || 'mi ejercicio original')}</button>` : ''}
       <div id="alt-filas"></div>
       <div id="alt-buscador"></div>
     </div>`;
   const filasDiv = document.getElementById('alt-filas');
+  const btnAltLibreria = document.getElementById('alt-libreria');
+  if (btnAltLibreria) btnAltLibreria.onclick = elegirDeLibreria;
+  const btnAltOriginal = document.getElementById('alt-original');
+  if (btnAltOriginal) {
+    btnAltOriginal.onclick = async () => {
+      btnAltOriginal.disabled = true;
+      const { error } = await supabase.from('rutina_ejercicios').update({ libreria_ejercicio_id: null }).eq('id', ej.id);
+      if (error) {
+        btnAltOriginal.disabled = false;
+        document.getElementById('reg-mensaje').innerHTML = `<div class="mensaje error">No se pudo cambiar el ejercicio: ${escaparHtml(error.message)}</div>`;
+        return;
+      }
+      if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
+      else await cargarRutina();
+      estado.ejercicioActivo = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id) || ej;
+      if (estado.pantalla === 'registro') render();
+    };
+  }
 
   (ej.alternativas || []).forEach((alt) => {
     const fila = h(`
@@ -2240,16 +2342,16 @@ async function renderRegistro() {
   }
 
   // Traer lo que YA se guardó hoy para este ejercicio, para no perderlo al salir y volver.
-  const { data: seriesGuardadas } = await supabase
+  const { data: seriesGuardadas } = await filtrarSeriesDe(supabase
     .from('series_registradas').select('id, numero_serie, peso_kg, repeticiones, rir')
-    .eq('sesion_id', sesionId).eq('ejercicio_id', ej.ejercicio_id).order('numero_serie');
+    .eq('sesion_id', sesionId), ej).order('numero_serie');
   if (!vigente()) return;
 
   const guardadasPorNumero = {};
   for (const s of seriesGuardadas || []) guardadasPorNumero[s.numero_serie] = s;
 
   // ---- Sugerencia de peso, basada en tu RIR de la última sesión (no hoy) ----
-  const sugerencia = await sugerirProgresion(ej.ejercicio_id, userId, hoy, ej.peso_asistido);
+  const sugerencia = await sugerirProgresion(ej, userId, hoy, ej.peso_asistido);
   if (!vigente()) return;
   if (sugerencia) {
     const cont = document.getElementById('reg-guia');
@@ -2257,14 +2359,13 @@ async function renderRegistro() {
   }
 
   const numSeries = ej.series || 3;
-  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null);
+  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null, ej.libreria_ejercicio_id || null);
 }
 
-async function sugerirProgresion(ejercicioId, userId, hoyStr, esAsistido) {
-  const { data } = await supabase
+async function sugerirProgresion(ej, userId, hoyStr, esAsistido) {
+  const { data } = await filtrarSeriesDe(supabase
     .from('series_registradas')
-    .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)')
-    .eq('ejercicio_id', ejercicioId)
+    .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)'), ej)
     .eq('sesiones_entrenamiento.usuario_id', userId)
     .not('peso_kg', 'is', null)
     .neq('sesiones_entrenamiento.fecha', hoyStr);
@@ -2297,7 +2398,7 @@ async function sugerirProgresion(ejercicioId, userId, hoyStr, esAsistido) {
   return { peso: pesoMax, texto: `Sugerido: continúa con ${pesoMax}kg (igual que tu última vez).` };
 }
 
-function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero, pesoSugerido) {
+function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero, pesoSugerido, libreriaId = null) {
   const tabla = document.getElementById('reg-tabla');
   tabla.innerHTML = `
     <div class="fila-encabezado"><span></span><span>Kg</span><span>Reps</span><span>RIR</span><span></span></div>
@@ -2348,6 +2449,7 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
         ? await supabase.from('series_registradas').update(valores).eq('id', guardada.id).select().single()
         : await supabase.from('series_registradas').insert({
             sesion_id: sesionId, ejercicio_id: ejercicioId, numero_serie: i, ...valores,
+            ...(libreriaId ? { libreria_ejercicio_id: libreriaId } : {}),
           }).select().single();
 
       if (error) {
@@ -2526,10 +2628,12 @@ async function usarAlternativa(alt) {
   const ej = estado.ejercicioActivo;
   const otras = (ej.alternativas || []).filter((a) => a.ejercicio_id !== alt.ejercicio_id);
   const anterior = { ejercicio_id: ej.ejercicio_id, nombre: ej.ejercicios?.nombre || ej.ejercicio_id, motivo: 'Tu ejercicio anterior — regresa a este si prefieres.' };
+  // Si la fila traía un ejercicio de la librería, una alternativa legacy lo reemplaza.
+  const limpiarLibreria = ej.libreria_ejercicio_id ? { libreria_ejercicio_id: null } : {};
   const nuevasAlternativas = [anterior, ...otras].slice(0, 2);
 
   const { error } = await supabase.from('rutina_ejercicios')
-    .update({ ejercicio_id: alt.ejercicio_id, alternativas: nuevasAlternativas })
+    .update({ ejercicio_id: alt.ejercicio_id, alternativas: nuevasAlternativas, ...limpiarLibreria })
     .eq('id', ej.id);
 
   if (error) {
@@ -2687,12 +2791,14 @@ async function renderHistorial() {
     }
 
     const { data: series } = await supabase
-      .from('series_registradas').select('ejercicio_id, peso_kg, repeticiones, ejercicios(nombre)')
+      .from('series_registradas')
+      .select(`ejercicio_id, ${estado.columnaLibreria ? 'libreria_ejercicio_id, ' : ''}peso_kg, repeticiones, ejercicios(nombre)`)
       .eq('sesion_id', s.id);
+    if ((series || []).some((x) => x.libreria_ejercicio_id)) await cargarLibreria();
 
     const porEjercicio = {};
     for (const serie of series || []) {
-      const nombre = serie.ejercicios?.nombre || serie.ejercicio_id;
+      const nombre = nombreEjercicio(serie);
       porEjercicio[nombre] = (porEjercicio[nombre] || 0) + 1;
     }
 
