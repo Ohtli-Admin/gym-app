@@ -52,3 +52,15 @@ test('cada lámina del índice existe en sus dos tamaños', async () => {
     await readFile(new URL(`../src/exercise-library/generated/media/${id}-mini.webp`, import.meta.url));
   }
 });
+
+test('la librería se puede reintentar tras un error de carga', async () => {
+  const src = await readFile(new URL('../libreria.js', import.meta.url), 'utf8');
+  assert.match(src, /id="lib-reintentar"/);
+  assert.match(src, /libreria\.error = null; renderLibreria\(\)/);
+});
+
+test('una búsqueda pendiente no repinta una vista que ya se reemplazó', async () => {
+  const src = await readFile(new URL('../libreria.js', import.meta.url), 'utf8');
+  assert.match(src, /function renderLibreria\(\) \{\n[^\n]*\n  clearTimeout\(libreria\.espera\);/);
+  assert.match(src, /if \(buscar\.isConnected\) pintarResultados\(\)/);
+});

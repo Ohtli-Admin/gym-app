@@ -65,3 +65,17 @@ test('resumenConstancia: la semana actual vacía no rompe la racha', () => {
   const r = resumenConstancia(['2026-10-27', '2026-10-20'], '2026-11-05');
   assert.equal(r.racha, 2);
 });
+
+test('resumenConstancia: la racha pasa de las 6 semanas de la gráfica', () => {
+  // Una sesión cada lunes durante 8 semanas seguidas, hasta esta semana.
+  const fechas = ['2026-11-02', '2026-10-26', '2026-10-19', '2026-10-12', '2026-10-05', '2026-09-28', '2026-09-21', '2026-09-14'];
+  const r = resumenConstancia(fechas, '2026-11-05');
+  assert.equal(r.racha, 8);
+  assert.equal(r.semanas.length, 6);
+});
+
+test('Progreso calcula la constancia con todas las fechas, no solo las 30 recientes', () => {
+  const h = extraerFuncion('renderHistorial');
+  assert.match(h, /select\('fecha'\)/);
+  assert.match(h, /resumenConstancia\(\(todasFechas \|\| sesiones\)/);
+});
