@@ -226,6 +226,8 @@ function render() {
   else if (estado.pantalla === 'historial') renderHistorial();
   else if (estado.pantalla === 'extra') renderExtra();
   else if (estado.pantalla === 'peso') renderPeso();
+  else if (estado.pantalla === 'libreria') renderLibreria();
+  else if (estado.pantalla === 'ficha') renderFicha();
   else {
     estado.pantalla = 'entrenamiento';
     renderEntrenamiento();
@@ -235,10 +237,11 @@ function render() {
   actualizarIndicadorGeneracion();
 }
 
-// Rediseño 003: cuatro destinos globales, un lugar obvio por acción —
+// Rediseño 003: cinco destinos globales, un lugar obvio por acción —
 // - Hoy: lo que toca hoy y el botón para empezar (pantalla 'entrenamiento').
 // - Plan: todos los productos de entrenamiento como pestañas; crear,
 //   ver y regenerar.
+// - Librería: explorar los ejercicios de Gym-Exercise-Library (libreria.js).
 // - Progreso: lo que ya hiciste, actividad extra y peso corporal.
 // - Perfil: lo que GymApp sabe de ti (se edita solo aquí).
 // Cada subpantalla pertenece a exactamente uno (para resaltar la barra).
@@ -254,6 +257,8 @@ const SECCION_POR_PANTALLA = {
   historial: 'progreso',
   extra: 'progreso',
   peso: 'progreso',
+  libreria: 'libreria',
+  ficha: 'libreria',
   perfil: 'perfil',
   onboarding: 'perfil',
 };
@@ -280,6 +285,7 @@ const ICONO_EJERCICIO = '<svg viewBox="0 0 24 24"><path d="M2.5 9.5h2v5h-2zM19.5
 const ICONOS_NAV = {
   hoy: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
   plan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 9.5h2v5h-2zM19.5 9.5h2v5h-2zM5 7h3v10H5zM16 7h3v10h-3zM8 11h8v2H8z"/></svg>',
+  libreria: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h4.5v16H4zM10 4h4.5v16H10zM16.2 5.2l3.9-1 3.4 14.5-3.9 1z"/></svg>',
   progreso: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V13h3.5v7zM10.25 20V8h3.5v12zM16.5 20V4H20v16z"/></svg>',
   perfil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5zM3.5 21c.6-4.4 4-7 8.5-7s7.9 2.6 8.5 7z"/></svg>',
 };
@@ -289,6 +295,7 @@ function renderNav() {
   const destinos = [
     { seccion: 'hoy', etiqueta: 'Hoy', pantalla: 'entrenamiento' },
     { seccion: 'plan', etiqueta: 'Plan', pantalla: estado.productoPlan || 'rutina' },
+    { seccion: 'libreria', etiqueta: 'Librería', pantalla: 'libreria' },
     { seccion: 'progreso', etiqueta: 'Progreso', pantalla: estado.progresoVista || 'historial' },
     { seccion: 'perfil', etiqueta: 'Perfil', pantalla: 'perfil' },
   ];

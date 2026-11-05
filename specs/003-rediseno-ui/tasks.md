@@ -9,9 +9,9 @@
 - [x] T006 Pruebas de regresión actualizadas y nuevas para la navegación
 
 ## US2 — Librería
-- [ ] T010 names.es para el catálogo en Gym-Exercise-Library
-- [ ] T011 Sync del snapshot + láminas reducidas
-- [ ] T012 Sección Librería (buscar, filtrar) y ficha del ejercicio
+- [x] T010 names.es para el catálogo en Gym-Exercise-Library
+- [x] T011 Sync del snapshot + láminas reducidas
+- [x] T012 Sección Librería (buscar, filtrar) y ficha del ejercicio
 
 ## US3 — Modo entrenando
 - [ ] T020 Vista de un ejercicio a la vez con series palomeables
