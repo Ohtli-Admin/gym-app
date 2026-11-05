@@ -27,4 +27,4 @@ Lo mantiene `speckit-relevo-cerrar`. Máximo 40 líneas; la historia vive en git
 |---|---|
 | 001 cierre GA-006 | 16/16 |
 | 002 censo legacy | spec y plan, sin tareas |
-| 003 rediseño UI | US1 6/6, US2 3/3 (PR), US3-US4 pendientes |
+| 003 rediseño UI | US1 6/6, US2 3/3, US3 2/2 (PRs), US4 pendiente (requiere aprobación) |
