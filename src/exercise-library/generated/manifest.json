@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-05T21:04:34.862Z",
+  "generatedAt": "2026-11-05T21:16:19.888Z",
   "generatedBy": "tools/sync-exercise-library.mjs",
   "source": {
     "repository": "Ohtli-Admin/Gym-Exercise-Library",
     "path": "output/gym-exercise-library/catalog.json",
     "readMode": "commit",
-    "commit": "3c4dbaa7d40333ea52776b550ecbf8c032fd03af",
-    "catalogLastCommit": "3c4dbaa7d40333ea52776b550ecbf8c032fd03af",
+    "commit": "a1d0694436e6f456a57fecf60678aed6ee24dbb2",
+    "catalogLastCommit": "a1d0694436e6f456a57fecf60678aed6ee24dbb2",
     "catalogHasUncommittedChanges": false,
     "schemaVersions": {
       "0.2": 876
