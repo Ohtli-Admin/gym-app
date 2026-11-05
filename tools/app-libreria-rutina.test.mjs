@@ -79,3 +79,15 @@ test('"Elegir de la librería" solo aparece si la base ya tiene la columna', () 
   assert.match(extraerFuncion(appJs, 'renderRegistro'), /\$\{estado\.columnaLibreria \? `<button type="button" class="g3-fila" id="alt-libreria">/);
   assert.match(extraerFuncion(libJs, 'renderFicha'), /libreria\.eligiendoPara \?[\s\S]*id="ficha-usar"/);
 });
+
+test('las series de hoy se separan por fila aunque dos filas usen el mismo ejercicio de la librería', () => {
+  const ej = { ejercicio_id: 'x', libreria_ejercicio_id: 'src-002-0123456789abcdef' };
+  const hoy = filtrar({ columnaLibreria: true })(consultaFalsa(), ej, { porFila: true });
+  assert.deepEqual(hoy.llamadas, [['eq', 'libreria_ejercicio_id', 'src-002-0123456789abcdef'], ['eq', 'ejercicio_id', 'x']]);
+  assert.match(extraerFuncion(appJs, 'renderRegistro'), /\.eq\('sesion_id', sesionId\), ej, \{ porFila: true \}\)/);
+});
+
+test('Progreso averigua si existe la columna antes de leer las series', () => {
+  assert.match(extraerFuncion(appJs, 'asegurarColumnaLibreria'), /select\('libreria_ejercicio_id'\)\.limit\(1\)/);
+  assert.match(extraerFuncion(appJs, 'renderHistorial'), /const conLibreria = await asegurarColumnaLibreria\(\);/);
+});

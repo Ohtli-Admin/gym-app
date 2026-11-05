@@ -1999,6 +1999,15 @@ function detectarColumnaLibreria(filas) {
   if (filas && filas.length) estado.columnaLibreria = 'libreria_ejercicio_id' in filas[0];
 }
 
+// Sabe si la base ya tiene la columna aunque las rutinas no hayan cargado
+// (p. ej. abrir Progreso justo al entrar). Una sola consulta y se recuerda.
+async function asegurarColumnaLibreria() {
+  if (typeof estado.columnaLibreria === 'boolean') return estado.columnaLibreria;
+  const { error } = await supabase.from('series_registradas').select('libreria_ejercicio_id').limit(1);
+  if (typeof estado.columnaLibreria !== 'boolean') estado.columnaLibreria = !error;
+  return estado.columnaLibreria;
+}
+
 async function prepararLibreriaDeRutina(filas) {
   detectarColumnaLibreria(filas);
   if ((filas || []).some((f) => f.libreria_ejercicio_id)) await cargarLibreria();
@@ -2026,8 +2035,14 @@ function primeraImagenEjercicio(ej, mini = true) {
 // Filtra series_registradas por el ejercicio que de verdad se hizo: el de la
 // librería si se eligió uno; si no, el legacy (sin contar series hechas con un
 // ejercicio de la librería sobre esa misma fila).
-function filtrarSeriesDe(consulta, ej) {
-  if (ej.libreria_ejercicio_id) return consulta.eq('libreria_ejercicio_id', ej.libreria_ejercicio_id);
+// Con { porFila: true } (las series de HOY de una fila de la rutina) también
+// se filtra por el ejercicio legacy de la fila, para que dos filas con el
+// mismo ejercicio de la librería no compartan series.
+function filtrarSeriesDe(consulta, ej, { porFila = false } = {}) {
+  if (ej.libreria_ejercicio_id) {
+    consulta = consulta.eq('libreria_ejercicio_id', ej.libreria_ejercicio_id);
+    return porFila ? consulta.eq('ejercicio_id', ej.ejercicio_id) : consulta;
+  }
   consulta = consulta.eq('ejercicio_id', ej.ejercicio_id);
   return estado.columnaLibreria ? consulta.is('libreria_ejercicio_id', null) : consulta;
 }
@@ -2344,7 +2359,7 @@ async function renderRegistro() {
   // Traer lo que YA se guardó hoy para este ejercicio, para no perderlo al salir y volver.
   const { data: seriesGuardadas } = await filtrarSeriesDe(supabase
     .from('series_registradas').select('id, numero_serie, peso_kg, repeticiones, rir')
-    .eq('sesion_id', sesionId), ej).order('numero_serie');
+    .eq('sesion_id', sesionId), ej, { porFila: true }).order('numero_serie');
   if (!vigente()) return;
 
   const guardadasPorNumero = {};
@@ -2790,9 +2805,10 @@ async function renderHistorial() {
       continue;
     }
 
+    const conLibreria = await asegurarColumnaLibreria();
     const { data: series } = await supabase
       .from('series_registradas')
-      .select(`ejercicio_id, ${estado.columnaLibreria ? 'libreria_ejercicio_id, ' : ''}peso_kg, repeticiones, ejercicios(nombre)`)
+      .select(`ejercicio_id, ${conLibreria ? 'libreria_ejercicio_id, ' : ''}peso_kg, repeticiones, ejercicios(nombre)`)
       .eq('sesion_id', s.id);
     if ((series || []).some((x) => x.libreria_ejercicio_id)) await cargarLibreria();
 
