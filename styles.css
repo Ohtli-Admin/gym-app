@@ -698,3 +698,26 @@ button { font-family: inherit; }
 .g3-datos dt { width: 76px; flex: none; color: var(--text-muted); font-size: 13px; }
 .g3-datos dd { margin: 0; font-size: 14px; }
 .nav-item { min-width: 0; flex: 1; padding: 6px 2px; }
+
+/* ---- Rediseño 003 · US3: modo entrenando y descanso a pantalla completa ---- */
+body.modo-enfoque #nav-container { display: none; }
+body.modo-enfoque #app { padding-bottom: 32px; }
+.g3-enfoque-top { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
+.g3-enfoque-top .g3-link { padding: 0; color: var(--text); }
+.g3-progreso-barra { height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin-bottom: 16px; }
+.g3-progreso-barra i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.g3-enfoque .titulo { font-family: var(--font-display); font-size: 28px; line-height: 1.1; margin-top: 14px; }
+.g3-enfoque-nav { display: flex; gap: 10px; margin-top: 18px; }
+.g3-enfoque-nav > * { flex: 1; margin: 0; }
+.g3-enfoque-nav button:disabled { opacity: 0.4; }
+.g3-enfoque #reg-cambiar { margin-top: 12px; width: 100%; }
+.g3-sugerencia { background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 14px; margin: 10px 0; }
+.g3-enfoque .btn-guardar-serie.hecha { font-size: 16px; }
+.g3-descanso { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px 18px; overflow-y: auto; text-align: center; }
+.g3-descanso-tiempo { font-family: var(--font-display); font-size: 96px; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+.g3-descanso p { color: var(--text-muted); margin: 0; }
+.g3-descanso-botones { display: flex; gap: 10px; }
+.g3-descanso-botones button { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 999px; padding: 12px 18px; font-weight: 700; font-size: 15px; cursor: pointer; }
+.g3-descanso-botones #descanso-saltar { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.g3-descanso-alt { width: 100%; max-width: 440px; text-align: left; margin-top: 10px; }
+.g3-descanso-alt .g3-fila { width: 100%; text-align: left; }

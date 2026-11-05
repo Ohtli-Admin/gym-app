@@ -14,8 +14,8 @@
 - [x] T012 Sección Librería (buscar, filtrar) y ficha del ejercicio
 
 ## US3 — Modo entrenando
-- [ ] T020 Vista de un ejercicio a la vez con series palomeables
-- [ ] T021 Descanso a pantalla con ±15 s y alternativas
+- [x] T020 Vista de un ejercicio a la vez con series palomeables
+- [x] T021 Descanso a pantalla con ±15 s y alternativas
 
 ## US4 — Rutinas desde la librería (requiere aprobación)
 - [ ] T030 Migración aditiva propuesta (sin aplicar)
