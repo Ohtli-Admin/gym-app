@@ -674,3 +674,27 @@ button { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .spinner, .spinner-mini { animation-duration: 2s; }
 }
+
+/* ---------- Librería (rediseño 003, US2) ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.g3-buscar { display: block; margin-bottom: 10px; }
+.g3-buscar input { width: 100%; border: 1px solid var(--border); padding: 13px 14px 13px 40px; color: var(--text); font-size: 16px; font-family: inherit; -webkit-appearance: none; appearance: none; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239DA79E' stroke-width='2.2'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='m16 16 4.5 4.5'/%3E%3C/svg%3E") 12px center / 18px no-repeat; border-radius: 12px; }
+.g3-buscar input::-webkit-search-cancel-button { filter: invert(0.6); }
+.g3-galeria { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.g3-tarjeta { display: flex; flex-direction: column; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; padding: 0; color: var(--text); cursor: pointer; min-width: 0; }
+.g3-tarjeta img, .g3-tarjeta .g3-sin-lamina { width: 100%; aspect-ratio: 16 / 7; object-fit: cover; display: block; background: #fff; }
+.g3-tarjeta > span:last-child { padding: 8px 10px 10px; font-size: 13px; font-weight: 600; line-height: 1.25; }
+.g3-sin-lamina { display: grid !important; place-items: center; background: var(--surface-2) !important; color: var(--text-muted); font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 13px; }
+.g3-ficha { display: flex; flex-direction: column; gap: 12px; }
+.g3-ficha .titulo { font-size: 30px; margin: 4px 0 0; }
+.g3-ficha .g2-back { align-self: flex-start; margin-bottom: 0; }
+.g3-ficha-img { width: 100%; border-radius: 16px; display: block; background: #fff; }
+.g3-ficha-vacia { aspect-ratio: 3 / 2; background: var(--surface) !important; display: grid; place-content: center; gap: 8px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.g3-ficha-vacia .g3-sin-lamina { background: none !important; font-size: 18px; }
+.g3-etiquetas { display: flex; flex-wrap: wrap; gap: 6px; }
+.g3-etiquetas span { background: var(--surface-2); border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 600; }
+.g3-datos { margin: 0; display: flex; flex-direction: column; gap: 8px; background: var(--surface); border-radius: 14px; padding: 12px 14px; }
+.g3-datos div { display: flex; gap: 10px; }
+.g3-datos dt { width: 76px; flex: none; color: var(--text-muted); font-size: 13px; }
+.g3-datos dd { margin: 0; font-size: 14px; }
+.nav-item { min-width: 0; flex: 1; padding: 6px 2px; }

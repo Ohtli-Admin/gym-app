@@ -1,5 +1,5 @@
-const CACHE = 'gymapp-v4';
-const ARCHIVOS = ['./', './index.html', './styles.css', './app.js', './instalar.js', './supabaseClient.js', './manifest.json'];
+const CACHE = 'gymapp-v5';
+const ARCHIVOS = ['./', './index.html', './styles.css', './app.js', './libreria.js', './instalar.js', './supabaseClient.js', './manifest.json'];
 
 self.addEventListener('install', (evt) => {
   evt.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ARCHIVOS)));

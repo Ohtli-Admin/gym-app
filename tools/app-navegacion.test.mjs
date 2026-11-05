@@ -1,5 +1,5 @@
-// Rediseño 003: navegación de cuatro destinos (Hoy, Plan, Progreso,
-// Perfil). app.js es un script clásico, así que se verifica sobre su texto
+// Rediseño 003: navegación de cinco destinos (Hoy, Plan, Librería,
+// Progreso, Perfil). app.js es un script clásico, así que se verifica sobre su texto
 // y, para la lógica pura, evaluando solo esas funciones.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,10 +23,10 @@ test('al entrar se abre Hoy (pantalla interna "entrenamiento")', () => {
   assert.match(appJs, /pantalla: 'entrenamiento',/);
 });
 
-test('la barra de abajo tiene exactamente Hoy, Plan, Progreso y Perfil', () => {
+test('la barra de abajo tiene exactamente Hoy, Plan, Librería, Progreso y Perfil', () => {
   const nav = extraerFuncion('renderNav');
   const etiquetas = [...nav.matchAll(/etiqueta: '([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(etiquetas, ['Hoy', 'Plan', 'Progreso', 'Perfil']);
+  assert.deepEqual(etiquetas, ['Hoy', 'Plan', 'Librería', 'Progreso', 'Perfil']);
 });
 
 test('toda pantalla que render() sabe pintar pertenece a una sección de la barra', () => {
