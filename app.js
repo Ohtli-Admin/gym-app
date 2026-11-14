@@ -226,19 +226,23 @@ function render() {
   else if (estado.pantalla === 'historial') renderHistorial();
   else if (estado.pantalla === 'extra') renderExtra();
   else if (estado.pantalla === 'peso') renderPeso();
+  else if (estado.pantalla === 'libreria') renderLibreria();
+  else if (estado.pantalla === 'ficha') renderFicha();
   else {
     estado.pantalla = 'entrenamiento';
     renderEntrenamiento();
   }
 
+  document.body.classList.toggle('modo-enfoque', estado.pantalla === 'registro');
   renderNav();
   actualizarIndicadorGeneracion();
 }
 
-// Rediseño 003: cuatro destinos globales, un lugar obvio por acción —
+// Rediseño 003: cinco destinos globales, un lugar obvio por acción —
 // - Hoy: lo que toca hoy y el botón para empezar (pantalla 'entrenamiento').
 // - Plan: todos los productos de entrenamiento como pestañas; crear,
 //   ver y regenerar.
+// - Librería: explorar los ejercicios de Gym-Exercise-Library (libreria.js).
 // - Progreso: lo que ya hiciste, actividad extra y peso corporal.
 // - Perfil: lo que GymApp sabe de ti (se edita solo aquí).
 // Cada subpantalla pertenece a exactamente uno (para resaltar la barra).
@@ -254,6 +258,8 @@ const SECCION_POR_PANTALLA = {
   historial: 'progreso',
   extra: 'progreso',
   peso: 'progreso',
+  libreria: 'libreria',
+  ficha: 'libreria',
   perfil: 'perfil',
   onboarding: 'perfil',
 };
@@ -280,6 +286,7 @@ const ICONO_EJERCICIO = '<svg viewBox="0 0 24 24"><path d="M2.5 9.5h2v5h-2zM19.5
 const ICONOS_NAV = {
   hoy: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
   plan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 9.5h2v5h-2zM19.5 9.5h2v5h-2zM5 7h3v10H5zM16 7h3v10h-3zM8 11h8v2H8z"/></svg>',
+  libreria: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h4.5v16H4zM10 4h4.5v16H10zM16.2 5.2l3.9-1 3.4 14.5-3.9 1z"/></svg>',
   progreso: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V13h3.5v7zM10.25 20V8h3.5v12zM16.5 20V4H20v16z"/></svg>',
   perfil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5zM3.5 21c.6-4.4 4-7 8.5-7s7.9 2.6 8.5 7z"/></svg>',
 };
@@ -289,6 +296,7 @@ function renderNav() {
   const destinos = [
     { seccion: 'hoy', etiqueta: 'Hoy', pantalla: 'entrenamiento' },
     { seccion: 'plan', etiqueta: 'Plan', pantalla: estado.productoPlan || 'rutina' },
+    { seccion: 'libreria', etiqueta: 'Librería', pantalla: 'libreria' },
     { seccion: 'progreso', etiqueta: 'Progreso', pantalla: estado.progresoVista || 'historial' },
     { seccion: 'perfil', etiqueta: 'Perfil', pantalla: 'perfil' },
   ];
@@ -301,6 +309,7 @@ function renderNav() {
     </nav>`;
   navContainer.querySelectorAll('[data-nav]').forEach((btn) => {
     btn.onclick = () => {
+      libreria.eligiendoPara = null; // salir por la barra cancela "elegir de la librería"
       if (btn.dataset.nav === 'especial') abrirEspecial();
       else irAPantalla(btn.dataset.nav);
     };
@@ -629,10 +638,10 @@ function renderEntrenamiento() {
     // Imagen del primer ejercicio del día, si existe (no bloquea el render).
     const primero = fuerza.dia.ejercicios?.[0];
     if (primero) {
-      supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', primero.ejercicio_id).order('orden').limit(1)
-        .then(({ data }) => {
+      primeraImagenEjercicio(primero, false)
+        .then((url) => {
           const cont = document.getElementById('hoy-hero-img');
-          if (cont && data && data[0]) cont.style.backgroundImage = `url("${encodeURI(data[0].url)}")`;
+          if (cont && url) cont.style.backgroundImage = `url("${encodeURI(url)}")`;
         });
     }
   }
@@ -1447,6 +1456,7 @@ async function cargarRutina() {
   const { data: ejercicios, error: ejerciciosError } = await supabase
     .from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)')
     .eq('rutina_id', rutina.id).order('dia').order('orden');
+  if (!ejerciciosError) await prepararLibreriaDeRutina(ejercicios);
 
   if (ejerciciosError) {
     estado.errorRutina = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
@@ -1551,6 +1561,7 @@ async function cargarRutinaAbdomen() {
   const { data: ejercicios, error: ejerciciosError } = await supabase
     .from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)')
     .eq('rutina_id', rutina.id).order('dia').order('orden');
+  if (!ejerciciosError) await prepararLibreriaDeRutina(ejercicios);
 
   if (ejerciciosError) {
     ab.error = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
@@ -1859,7 +1870,7 @@ function renderRutina() {
 
   const listaDiv = document.getElementById('lista-ejercicios');
   dia.ejercicios.forEach((ej) => {
-    const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+    const nombre = escaparHtml(nombreEjercicio(ej));
     const altTxt = ej.alternativas?.length ? ` · ${ej.alternativas.length} alternativa(s)` : '';
     const tarjeta = h(`
       <div class="tarjeta-ejercicio">
@@ -1879,11 +1890,11 @@ function renderRutina() {
     listaDiv.appendChild(tarjeta);
 
     // Foto miniatura real, si existe (no bloquea el render de la tarjeta).
-    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
-      .then(({ data }) => {
-        if (data && data[0]) {
+    primeraImagenEjercicio(ej)
+      .then((url) => {
+        if (url) {
           const ph = tarjeta.querySelector('.ph');
-          const img = h(`<img src="${data[0].url}" />`);
+          const img = h(`<img src="${url}" alt="" />`);
           ph.replaceWith(img);
         }
       });
@@ -1946,7 +1957,7 @@ function renderAbdomen() {
 
   const listaDiv = document.getElementById('lista-ejercicios-ab');
   dia.ejercicios.forEach((ej) => {
-    const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+    const nombre = escaparHtml(nombreEjercicio(ej));
     const altTxt = ej.alternativas?.length ? ` · ${ej.alternativas.length} alternativa(s)` : '';
     const tarjeta = h(`
       <div class="tarjeta-ejercicio">
@@ -1965,11 +1976,11 @@ function renderAbdomen() {
     };
     listaDiv.appendChild(tarjeta);
 
-    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
-      .then(({ data }) => {
-        if (data && data[0]) {
+    primeraImagenEjercicio(ej)
+      .then((url) => {
+        if (url) {
           const ph = tarjeta.querySelector('.ph');
-          const img = h(`<img src="${data[0].url}" />`);
+          const img = h(`<img src="${url}" alt="" />`);
           ph.replaceWith(img);
         }
       });
@@ -1979,7 +1990,96 @@ function renderAbdomen() {
 // =========================================================================
 // Pantalla Registro — con precarga de lo ya guardado (corrige el bug)
 // =========================================================================
+// ---- Ejercicios de la librería dentro de la rutina (rediseño 003, US4) ----
+// Una fila de rutina_ejercicios puede traer `libreria_ejercicio_id` (columna
+// nueva, aditiva). Si viene, se muestra y se registra ese ejercicio de la
+// librería; `ejercicio_id` (legacy) se conserva tal cual. Mientras la columna
+// no exista en la base, todo se comporta como antes.
+function detectarColumnaLibreria(filas) {
+  if (filas && filas.length) estado.columnaLibreria = 'libreria_ejercicio_id' in filas[0];
+}
+
+// Sabe si la base ya tiene la columna aunque las rutinas no hayan cargado
+// (p. ej. abrir Progreso justo al entrar). Una sola consulta y se recuerda.
+async function asegurarColumnaLibreria() {
+  if (typeof estado.columnaLibreria === 'boolean') return estado.columnaLibreria;
+  const { error } = await supabase.from('series_registradas').select('libreria_ejercicio_id').limit(1);
+  if (typeof estado.columnaLibreria !== 'boolean') estado.columnaLibreria = !error;
+  return estado.columnaLibreria;
+}
+
+async function prepararLibreriaDeRutina(filas) {
+  detectarColumnaLibreria(filas);
+  if ((filas || []).some((f) => f.libreria_ejercicio_id)) await cargarLibreria();
+}
+
+function registroLibreriaDe(ej) {
+  if (!ej?.libreria_ejercicio_id || !libreria.registros) return null;
+  return libreria.registros.find((r) => r.exercise_id === ej.libreria_ejercicio_id) || null;
+}
+
+function nombreEjercicio(ej) {
+  const reg = registroLibreriaDe(ej);
+  if (reg) return nombreEjercicioLibreria(reg);
+  if (ej?.libreria_ejercicio_id) return 'Ejercicio de la librería';
+  return ej?.ejercicios?.nombre || ej?.ejercicio_id || '';
+}
+
+// Primera imagen del ejercicio (lámina de la librería o foto legacy).
+function primeraImagenEjercicio(ej, mini = true) {
+  if (ej.libreria_ejercicio_id) return Promise.resolve(imagenLibreria(ej.libreria_ejercicio_id, mini));
+  return supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
+    .then(({ data }) => data?.[0]?.url || null);
+}
+
+// Filtra series_registradas por el ejercicio que de verdad se hizo: el de la
+// librería si se eligió uno; si no, el legacy (sin contar series hechas con un
+// ejercicio de la librería sobre esa misma fila).
+// Con { porFila: true } (las series de HOY de una fila de la rutina) también
+// se filtra por el ejercicio legacy de la fila, para que dos filas con el
+// mismo ejercicio de la librería no compartan series.
+function filtrarSeriesDe(consulta, ej, { porFila = false } = {}) {
+  if (ej.libreria_ejercicio_id) {
+    consulta = consulta.eq('libreria_ejercicio_id', ej.libreria_ejercicio_id);
+    return porFila ? consulta.eq('ejercicio_id', ej.ejercicio_id) : consulta;
+  }
+  consulta = consulta.eq('ejercicio_id', ej.ejercicio_id);
+  return estado.columnaLibreria ? consulta.is('libreria_ejercicio_id', null) : consulta;
+}
+
+// Abre la Librería para elegir con qué ejercicio reemplazar el de la rutina.
+function elegirDeLibreria() {
+  detenerDescanso();
+  libreria.eligiendoPara = estado.ejercicioActivo;
+  estado.pantalla = 'libreria';
+  render();
+  window.scrollTo(0, 0);
+}
+
+async function cambiarPorLibreria(exerciseId) {
+  const ej = libreria.eligiendoPara;
+  if (!ej) return;
+  const { error } = await supabase.from('rutina_ejercicios')
+    .update({ libreria_ejercicio_id: exerciseId })
+    .eq('id', ej.id);
+  if (error) return error;
+  libreria.eligiendoPara = null;
+  if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
+  else await cargarRutina();
+  estado.ejercicioActivo = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id) || estado.ejercicioActivo;
+  estado.pantalla = 'registro';
+  render();
+  window.scrollTo(0, 0);
+  return null;
+}
+
+// Cada renderRegistro() invalida al anterior: con Anterior/Siguiente, una
+// respuesta lenta del ejercicio A no debe pintar (ni guardar) sobre el B.
+let registroVigente = 0;
+
 async function renderRegistro() {
+  const token = ++registroVigente;
+  const vigente = () => token === registroVigente && estado.pantalla === 'registro';
   app.innerHTML = '';
 
   if (!estado.ejercicioActivo) {
@@ -1992,28 +2092,63 @@ async function renderRegistro() {
   }
 
   const ej = estado.ejercicioActivo;
-  const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+  const nombre = nombreEjercicio(ej);
+  const regLib = registroLibreriaDe(ej);
+  const grupoMuscular = regLib
+    ? (GRUPOS_LIBRERIA.find((g) => g.id === gruposDeEjercicio(regLib)[0])?.etiqueta || '').toLowerCase()
+    : ej.ejercicios?.grupo_muscular;
+  const delDia = ejerciciosDelDiaRegistro();
+  const pos = delDia.findIndex((x) => x.id === ej.id);
+  const anterior = pos > 0 ? delDia[pos - 1] : null;
+  const siguiente = pos >= 0 && pos < delDia.length - 1 ? delDia[pos + 1] : null;
 
+  // Modo entrenando (rediseño 003, US3): un ejercicio a la vez, a pantalla
+  // completa (sin barra de abajo), con anterior/siguiente del mismo día.
+  // Las escrituras a sesiones_entrenamiento y series_registradas son las
+  // mismas de antes.
   app.appendChild(h(`
-    <div>
-      <h1 class="titulo">${nombre}</h1>
-      <p class="subtitulo">Objetivo: ${ej.series} series x ${ej.reps_objetivo} reps</p>
-      <div id="reg-progreso"></div>
+    <div class="g3-enfoque">
+      <div class="g3-enfoque-top">
+        <span>${pos >= 0 ? `Ejercicio ${pos + 1} de ${delDia.length}` : 'Registro'}</span>
+        <button type="button" class="g3-link" id="reg-volver">Terminar</button>
+      </div>
+      ${pos >= 0 ? `<div class="g3-progreso-barra" role="progressbar" aria-valuemin="0" aria-valuemax="${delDia.length}" aria-valuenow="${pos + 1}"><i style="width:${Math.round(((pos + 1) / delDia.length) * 100)}%"></i></div>` : ''}
       <div id="reg-imagenes"><div class="sin-imagen">Buscando fotos de referencia…</div></div>
-      <div id="reg-guia" class="guia-musculo">Trabaja: <strong>${ej.ejercicios?.grupo_muscular || 'este grupo muscular'}</strong>. Enfócate en sentir el músculo objetivo trabajando, con movimientos controlados — no en levantar el peso como sea.</div>
-      <div id="reg-alternativas"></div>
+      <h1 class="titulo">${escaparHtml(nombre)}</h1>
+      <p class="subtitulo">Objetivo: ${ej.series} series × ${escaparHtml(ej.reps_objetivo)} reps</p>
+      <div id="reg-guia" class="guia-musculo">Trabaja: <strong>${escaparHtml(grupoMuscular || 'este grupo muscular')}</strong>. Movimientos controlados; siente el músculo, no levantes el peso como sea.</div>
+      <div id="reg-progreso"></div>
       <div id="reg-mensaje"></div>
       <div class="tabla-series" id="reg-tabla"><div class="pantalla-carga"><div class="spinner"></div></div></div>
-      <button class="boton-primario" id="reg-volver">Volver a mi rutina</button>
+      <div class="g3-enfoque-nav">
+        <button type="button" class="boton-secundario-caja" id="reg-anterior" ${anterior ? '' : 'disabled'}>‹ Anterior</button>
+        <button type="button" class="boton-primario" id="reg-siguiente">${siguiente ? 'Siguiente ›' : 'Terminar'}</button>
+      </div>
+      <button type="button" class="boton-secundario" id="reg-cambiar">Cambiar este ejercicio</button>
+      <div id="reg-alternativas" hidden></div>
     </div>`));
 
-  document.getElementById('reg-volver').onclick = () => { estado.pantalla = estado.pantallaOrigenRegistro || 'rutina'; render(); };
+  const volverAlPlan = () => { detenerDescanso(); estado.pantalla = estado.pantallaOrigenRegistro || 'rutina'; render(); };
+  document.getElementById('reg-volver').onclick = volverAlPlan;
+  const irA = (otro) => { detenerDescanso(); estado.ejercicioActivo = otro; renderRegistro(); window.scrollTo(0, 0); };
+  if (anterior) document.getElementById('reg-anterior').onclick = () => irA(anterior);
+  document.getElementById('reg-siguiente').onclick = () => (siguiente ? irA(siguiente) : volverAlPlan());
+  document.getElementById('reg-cambiar').onclick = () => {
+    const cont = document.getElementById('reg-alternativas');
+    cont.hidden = !cont.hidden;
+    if (!cont.hidden) cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // ---- Imágenes principales (grandes) ----
-  supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
+  if (ej.libreria_ejercicio_id) {
+    const url = imagenLibreria(ej.libreria_ejercicio_id, false);
+    document.getElementById('reg-imagenes').innerHTML = url
+      ? `<img class="g3-ficha-img" src="${url}" alt="Lámina de ${escaparHtml(nombre)}" />`
+      : '<div class="sin-imagen">Este ejercicio de la librería todavía no tiene lámina.</div>';
+  } else supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
     .then(({ data }) => {
       const cont = document.getElementById('reg-imagenes');
-      if (!cont) return;
+      if (!cont || !vigente()) return;
       if (!data || data.length === 0) {
         cont.innerHTML = '<div class="sin-imagen">Sin foto de referencia para este ejercicio todavía.</div>';
         return;
@@ -2026,14 +2161,14 @@ async function renderRegistro() {
 
   // ---- Toggle: ¿este ejercicio usa peso de asistencia? ----
   const toggleAsistidoDiv = h(`
-    <div class="toggle-fila ${ej.peso_asistido ? 'activo' : ''}" id="toggle-asistido" style="margin-bottom:14px">
+    <div class="toggle-fila ${ej.peso_asistido ? 'activo' : ''}" id="toggle-asistido" style="margin-top:14px">
       <div class="toggle-dot"></div>
       <div class="toggle-texto">
         <strong>Es un ejercicio de asistencia</strong>
         <span>Ej. dominadas asistidas: MENOS peso en la máquina = más difícil. Actívalo para que el progreso se interprete al revés.</span>
       </div>
     </div>`);
-  document.getElementById('reg-guia').insertAdjacentElement('afterend', toggleAsistidoDiv);
+  document.getElementById('reg-alternativas').insertAdjacentElement('afterend', toggleAsistidoDiv);
   toggleAsistidoDiv.onclick = async () => {
     const nuevoValor = !ej.peso_asistido;
     await supabase.from('rutina_ejercicios').update({ peso_asistido: nuevoValor }).eq('id', ej.id);
@@ -2042,12 +2177,11 @@ async function renderRegistro() {
   };
 
   // ---- Progreso / estancamiento (por sesión) + estancamiento por semanas ----
-  supabase.from('series_registradas')
-    .select('peso_kg, repeticiones, sesiones_entrenamiento!inner(fecha)')
-    .eq('ejercicio_id', ej.ejercicio_id)
+  filtrarSeriesDe(supabase.from('series_registradas')
+    .select('peso_kg, repeticiones, sesiones_entrenamiento!inner(fecha)'), ej)
     .then(({ data }) => {
       const cont = document.getElementById('reg-progreso');
-      if (!cont || !data) return;
+      if (!cont || !data || !vigente()) return;
 
       const hayPeso = data.some((s) => s.peso_kg != null && s.peso_kg > 0);
       // Si nunca se registra peso (ej. Wall Angel, puro peso corporal), usamos
@@ -2086,7 +2220,7 @@ async function renderRegistro() {
           <div class="bloque-progreso estancado" style="margin-top:8px">
             ⚠️ Llevas ${estancSemanas.semanas} semanas seguidas sin mejorar en este ejercicio (${estancSemanas.valor}${unidad}).
             <div style="margin-top:6px;font-weight:400">Opciones a considerar: ${hayPeso ? 'ajusta el peso aunque bajes 1-2 reps' : 'suma 1-2 repeticiones aunque sea con más esfuerzo'}, cambia el rango de repeticiones, o dale unos días de descanso extra a este grupo muscular (deload).</div>
-            <button class="btn-usar-alt" id="btn-ver-alternativas" style="margin-top:10px">Ver alternativas de este ejercicio ↓</button>
+            <button class="btn-usar-alt" id="btn-ver-alternativas" style="margin-top:10px">Ver alternativas de este ejercicio</button>
           </div>`;
       }
 
@@ -2094,7 +2228,10 @@ async function renderRegistro() {
       const btnVerAlt = document.getElementById('btn-ver-alternativas');
       if (btnVerAlt) {
         btnVerAlt.onclick = () => {
-          document.getElementById('reg-alternativas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const contAlt = document.getElementById('reg-alternativas');
+          if (!contAlt) return;
+          contAlt.hidden = false;
+          contAlt.scrollIntoView({ behavior: 'smooth', block: 'start' });
         };
       }
     });
@@ -2103,11 +2240,34 @@ async function renderRegistro() {
   const contAlt = document.getElementById('reg-alternativas');
   contAlt.innerHTML = `
     <div class="bloque-alternativas">
-      <span class="etiqueta">Si no puedes hacer este ejercicio</span>
+      <span class="etiqueta">Cambiar por</span>
+      ${estado.columnaLibreria ? `<button type="button" class="g3-fila" id="alt-libreria">
+        <span class="g3-fila-info"><strong>Elegir de la librería</strong><span>Busca entre todos los ejercicios con su lámina</span></span>
+        <span class="g3-chevron" aria-hidden="true">›</span>
+      </button>` : ''}
+      ${ej.libreria_ejercicio_id ? `<button type="button" class="boton-secundario" id="alt-original">Volver a ${escaparHtml(ej.ejercicios?.nombre || 'mi ejercicio original')}</button>` : ''}
       <div id="alt-filas"></div>
       <div id="alt-buscador"></div>
     </div>`;
   const filasDiv = document.getElementById('alt-filas');
+  const btnAltLibreria = document.getElementById('alt-libreria');
+  if (btnAltLibreria) btnAltLibreria.onclick = elegirDeLibreria;
+  const btnAltOriginal = document.getElementById('alt-original');
+  if (btnAltOriginal) {
+    btnAltOriginal.onclick = async () => {
+      btnAltOriginal.disabled = true;
+      const { error } = await supabase.from('rutina_ejercicios').update({ libreria_ejercicio_id: null }).eq('id', ej.id);
+      if (error) {
+        btnAltOriginal.disabled = false;
+        document.getElementById('reg-mensaje').innerHTML = `<div class="mensaje error">No se pudo cambiar el ejercicio: ${escaparHtml(error.message)}</div>`;
+        return;
+      }
+      if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
+      else await cargarRutina();
+      estado.ejercicioActivo = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id) || ej;
+      if (estado.pantalla === 'registro') render();
+    };
+  }
 
   (ej.alternativas || []).forEach((alt) => {
     const fila = h(`
@@ -2151,6 +2311,7 @@ async function renderRegistro() {
       const { data } = await supabase
         .from('ejercicios').select('id, nombre, equipo')
         .ilike('nombre', `%${texto}%`).limit(5);
+      if (!vigente()) return;
       if (!data || data.length === 0) {
         resDiv.innerHTML = '<p class="subtitulo" style="margin-top:8px">Sin resultados.</p>';
         return;
@@ -2177,6 +2338,7 @@ async function renderRegistro() {
     .from('sesiones_entrenamiento').select('id')
     .eq('usuario_id', userId).eq('rutina_id', ej.rutina_id).eq('fecha', hoy).eq('dia', ej.dia)
     .maybeSingle();
+  if (!vigente()) return;
 
   let sesionId;
   if (sesionExistente) {
@@ -2186,6 +2348,7 @@ async function renderRegistro() {
       .from('sesiones_entrenamiento')
       .insert({ usuario_id: userId, rutina_id: ej.rutina_id, fecha: hoy, dia: ej.dia })
       .select('id').single();
+    if (!vigente()) return;
     if (error) {
       document.getElementById('reg-tabla').innerHTML = `<div class="mensaje error">No se pudo crear la sesión: ${error.message}</div>`;
       return;
@@ -2194,29 +2357,30 @@ async function renderRegistro() {
   }
 
   // Traer lo que YA se guardó hoy para este ejercicio, para no perderlo al salir y volver.
-  const { data: seriesGuardadas } = await supabase
+  const { data: seriesGuardadas } = await filtrarSeriesDe(supabase
     .from('series_registradas').select('id, numero_serie, peso_kg, repeticiones, rir')
-    .eq('sesion_id', sesionId).eq('ejercicio_id', ej.ejercicio_id).order('numero_serie');
+    .eq('sesion_id', sesionId), ej, { porFila: true }).order('numero_serie');
+  if (!vigente()) return;
 
   const guardadasPorNumero = {};
   for (const s of seriesGuardadas || []) guardadasPorNumero[s.numero_serie] = s;
 
   // ---- Sugerencia de peso, basada en tu RIR de la última sesión (no hoy) ----
-  const sugerencia = await sugerirProgresion(ej.ejercicio_id, userId, hoy, ej.peso_asistido);
+  const sugerencia = await sugerirProgresion(ej, userId, hoy, ej.peso_asistido);
+  if (!vigente()) return;
   if (sugerencia) {
     const cont = document.getElementById('reg-guia');
-    cont.insertAdjacentHTML('beforebegin', `<div class="mensaje info">💡 ${sugerencia.texto}</div>`);
+    cont.insertAdjacentHTML('beforebegin', `<div class="g3-sugerencia">${escaparHtml(sugerencia.texto)}</div>`);
   }
 
   const numSeries = ej.series || 3;
-  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null);
+  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null, ej.libreria_ejercicio_id || null);
 }
 
-async function sugerirProgresion(ejercicioId, userId, hoyStr, esAsistido) {
-  const { data } = await supabase
+async function sugerirProgresion(ej, userId, hoyStr, esAsistido) {
+  const { data } = await filtrarSeriesDe(supabase
     .from('series_registradas')
-    .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)')
-    .eq('ejercicio_id', ejercicioId)
+    .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)'), ej)
     .eq('sesiones_entrenamiento.usuario_id', userId)
     .not('peso_kg', 'is', null)
     .neq('sesiones_entrenamiento.fecha', hoyStr);
@@ -2249,7 +2413,7 @@ async function sugerirProgresion(ejercicioId, userId, hoyStr, esAsistido) {
   return { peso: pesoMax, texto: `Sugerido: continúa con ${pesoMax}kg (igual que tu última vez).` };
 }
 
-function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero, pesoSugerido) {
+function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero, pesoSugerido, libreriaId = null) {
   const tabla = document.getElementById('reg-tabla');
   tabla.innerHTML = `
     <div class="fila-encabezado"><span></span><span>Kg</span><span>Reps</span><span>RIR</span><span></span></div>
@@ -2265,7 +2429,7 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
         <input type="number" id="peso-${i}" value="${valorPeso}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="reps-${i}" value="${guardada?.repeticiones ?? ''}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="rir-${i}" value="${guardada?.rir ?? ''}" ${guardada ? 'disabled' : ''} />
-        <button class="btn-guardar-serie ${guardada ? 'hecha' : ''}" id="btn-${i}">${guardada ? 'Editar' : 'Guardar'}</button>
+        <button class="btn-guardar-serie ${guardada ? 'hecha' : ''}" id="btn-${i}" aria-label="${guardada ? `Editar serie ${i}` : `Guardar serie ${i}`}">${guardada ? '✓' : 'Guardar'}</button>
       </div>`);
     filasDiv.appendChild(fila);
 
@@ -2300,6 +2464,7 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
         ? await supabase.from('series_registradas').update(valores).eq('id', guardada.id).select().single()
         : await supabase.from('series_registradas').insert({
             sesion_id: sesionId, ejercicio_id: ejercicioId, numero_serie: i, ...valores,
+            ...(libreriaId ? { libreria_ejercicio_id: libreriaId } : {}),
           }).select().single();
 
       if (error) {
@@ -2313,12 +2478,13 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
       guardada = fila; // ahora sí existe (o se actualizó) — el próximo clic vuelve a ser "editar"
       btn().disabled = false;
       btn().classList.add('hecha');
-      btn().textContent = 'Editar';
+      btn().textContent = '✓';
+      btn().setAttribute('aria-label', `Editar serie ${i}`);
       pesoInput().disabled = true;
       repsInput().disabled = true;
       rirInput().disabled = true;
 
-      if (eraNueva && i < numSeries) iniciarDescanso(90);
+      if (eraNueva && i < numSeries) iniciarDescanso(90, { siguiente: `Siguiente: serie ${i + 1} de ${numSeries}` });
     };
 
     btn().onclick = () => {
@@ -2333,26 +2499,67 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
   }
 }
 
-// ---- Temporizador de descanso entre series ----
+// Ejercicios del mismo día que el ejercicio en registro (para
+// anterior/siguiente), según de qué plan se abrió.
+function ejerciciosDelDiaRegistro() {
+  const ej = estado.ejercicioActivo;
+  if (!ej) return [];
+  const dias = estado.pantallaOrigenRegistro === 'abdomen' ? estado.abdomen.dias : estado.dias;
+  return (dias || []).find((d) => d.dia === ej.dia)?.ejercicios || [];
+}
+
+// ---- Descanso entre series (rediseño 003: a pantalla completa) ----
+// Cronómetro grande con ±15 s y, si la máquina está ocupada, las
+// alternativas del ejercicio a un toque (mismo usarAlternativa() de
+// siempre).
 let descansoInterval = null;
 
-function iniciarDescanso(segundosIniciales) {
+function iniciarDescanso(segundosIniciales, { siguiente = '' } = {}) {
   detenerDescanso();
   let restante = segundosIniciales;
+  const alternativas = estado.ejercicioActivo?.alternativas || [];
 
-  const banner = h(`
-    <div class="banner-descanso" id="banner-descanso">
-      <span>Descanso: <strong id="descanso-num">${formatoTiempo(restante)}</strong></span>
-      <button id="descanso-saltar">Saltar</button>
+  const capa = h(`
+    <div class="g3-descanso" id="banner-descanso" role="dialog" aria-label="Descanso">
+      <span class="g3-eyebrow">Descanso</span>
+      <strong class="g3-descanso-tiempo" id="descanso-num">${formatoTiempo(restante)}</strong>
+      <div class="g3-descanso-botones">
+        <button type="button" data-ajuste="-15">−15 s</button>
+        <button type="button" data-ajuste="15">+15 s</button>
+        <button type="button" id="descanso-saltar">Saltar</button>
+      </div>
+      ${siguiente ? `<p>${escaparHtml(siguiente)}</p>` : ''}
+      ${alternativas.length ? `
+        <div class="g3-descanso-alt">
+          <span class="g3-seccion">¿Máquina ocupada? Cambia por</span>
+          ${alternativas.map((alt, idx) => `
+            <button type="button" class="g3-fila" data-alt-idx="${idx}">
+              <span class="g3-fila-info"><strong>${escaparHtml(alt.nombre)}</strong><span>${escaparHtml(alt.motivo || '')}</span></span>
+              <span class="g3-chevron" aria-hidden="true">›</span>
+            </button>`).join('')}
+        </div>` : ''}
     </div>`);
-  document.body.appendChild(banner);
+  document.body.appendChild(capa);
   document.getElementById('descanso-saltar').onclick = detenerDescanso;
+  capa.querySelectorAll('[data-ajuste]').forEach((btn) => {
+    btn.onclick = () => {
+      restante = Math.max(5, restante + Number(btn.dataset.ajuste));
+      document.getElementById('descanso-num').textContent = formatoTiempo(restante);
+    };
+  });
+  capa.querySelectorAll('[data-alt-idx]').forEach((btn) => {
+    btn.onclick = () => { const alt = alternativas[Number(btn.dataset.altIdx)]; detenerDescanso(); usarAlternativa(alt); };
+  });
 
   descansoInterval = setInterval(() => {
     restante--;
     const num = document.getElementById('descanso-num');
     if (!num) { detenerDescanso(); return; }
-    if (restante <= 0) { detenerDescanso(); return; }
+    if (restante <= 0) {
+      detenerDescanso();
+      if (navigator.vibrate) navigator.vibrate(200);
+      return;
+    }
     num.textContent = formatoTiempo(restante);
   }, 1000);
 }
@@ -2436,10 +2643,12 @@ async function usarAlternativa(alt) {
   const ej = estado.ejercicioActivo;
   const otras = (ej.alternativas || []).filter((a) => a.ejercicio_id !== alt.ejercicio_id);
   const anterior = { ejercicio_id: ej.ejercicio_id, nombre: ej.ejercicios?.nombre || ej.ejercicio_id, motivo: 'Tu ejercicio anterior — regresa a este si prefieres.' };
+  // Si la fila traía un ejercicio de la librería, una alternativa legacy lo reemplaza.
+  const limpiarLibreria = ej.libreria_ejercicio_id ? { libreria_ejercicio_id: null } : {};
   const nuevasAlternativas = [anterior, ...otras].slice(0, 2);
 
   const { error } = await supabase.from('rutina_ejercicios')
-    .update({ ejercicio_id: alt.ejercicio_id, alternativas: nuevasAlternativas })
+    .update({ ejercicio_id: alt.ejercicio_id, alternativas: nuevasAlternativas, ...limpiarLibreria })
     .eq('id', ej.id);
 
   if (error) {
@@ -2449,7 +2658,15 @@ async function usarAlternativa(alt) {
 
   if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
   else await cargarRutina();
-  estado.pantalla = estado.pantallaOrigenRegistro || 'rutina';
+  // Rediseño 003: seguir entrenando con el ejercicio nuevo (misma fila de
+  // la rutina, ya recargada) en vez de regresar al plan.
+  const fila = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id);
+  if (fila) {
+    estado.ejercicioActivo = fila;
+    estado.pantalla = 'registro';
+  } else {
+    estado.pantalla = estado.pantallaOrigenRegistro || 'rutina';
+  }
   render();
 }
 
@@ -2588,13 +2805,16 @@ async function renderHistorial() {
       continue;
     }
 
+    const conLibreria = await asegurarColumnaLibreria();
     const { data: series } = await supabase
-      .from('series_registradas').select('ejercicio_id, peso_kg, repeticiones, ejercicios(nombre)')
+      .from('series_registradas')
+      .select(`ejercicio_id, ${conLibreria ? 'libreria_ejercicio_id, ' : ''}peso_kg, repeticiones, ejercicios(nombre)`)
       .eq('sesion_id', s.id);
+    if ((series || []).some((x) => x.libreria_ejercicio_id)) await cargarLibreria();
 
     const porEjercicio = {};
     for (const serie of series || []) {
-      const nombre = serie.ejercicios?.nombre || serie.ejercicio_id;
+      const nombre = nombreEjercicio(serie);
       porEjercicio[nombre] = (porEjercicio[nombre] || 0) + 1;
     }
 
