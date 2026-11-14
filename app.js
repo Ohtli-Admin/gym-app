@@ -3,7 +3,12 @@
 // =========================================================================
 const estado = {
   sesion: undefined, // undefined = cargando, null = sin sesión
-  pantalla: 'perfil', // GymApp 2.0 (GA-005 UX pass): Perfil es el destino post-login por defecto
+  // Rediseño 003: al entrar se abre Hoy. Internamente la pantalla se sigue
+  // llamando 'entrenamiento' porque src/today-experience navega a ese nombre
+  // al salir de una sesión.
+  pantalla: 'entrenamiento',
+  productoPlan: 'rutina', // última pestaña abierta en Plan
+  progresoVista: 'historial', // 'historial' | 'extra' | 'peso'
   authModo: 'login', // 'login' | 'registro' | 'reset'
   dias: null,
   rutinaId: null,
@@ -220,51 +225,94 @@ function render() {
   else if (estado.pantalla === 'registro') renderRegistro();
   else if (estado.pantalla === 'historial') renderHistorial();
   else if (estado.pantalla === 'extra') renderExtra();
+  else if (estado.pantalla === 'peso') renderPeso();
+  else if (estado.pantalla === 'libreria') renderLibreria();
+  else if (estado.pantalla === 'ficha') renderFicha();
   else {
-    estado.pantalla = 'perfil';
-    renderPerfil();
+    estado.pantalla = 'entrenamiento';
+    renderEntrenamiento();
   }
 
+  document.body.classList.toggle('modo-enfoque', estado.pantalla === 'registro');
   renderNav();
   actualizarIndicadorGeneracion();
 }
 
-// GymApp 2.0 (GA-005 UX pass): exactly THREE global destinations, one
-// obvious place per action —
-// - Perfil: what GymApp knows about you (edited only here).
-// - Entrenamiento: every training product; view / create / regenerate.
-// - Historial: what you already did (and logging extra activity).
-// Every sub-screen belongs to exactly one of them (nav highlight).
+// Rediseño 003: cinco destinos globales, un lugar obvio por acción —
+// - Hoy: lo que toca hoy y el botón para empezar (pantalla 'entrenamiento').
+// - Plan: todos los productos de entrenamiento como pestañas; crear,
+//   ver y regenerar.
+// - Librería: explorar los ejercicios de Gym-Exercise-Library (libreria.js).
+// - Progreso: lo que ya hiciste, actividad extra y peso corporal.
+// - Perfil: lo que GymApp sabe de ti (se edita solo aquí).
+// Cada subpantalla pertenece a exactamente uno (para resaltar la barra).
 const SECCION_POR_PANTALLA = {
+  entrenamiento: 'hoy',
+  entrenar: 'hoy',
+  rutina: 'plan',
+  cardio: 'plan',
+  abdomen: 'plan',
+  calistenia: 'plan',
+  especial: 'plan',
+  registro: 'plan',
+  historial: 'progreso',
+  extra: 'progreso',
+  peso: 'progreso',
+  libreria: 'libreria',
+  ficha: 'libreria',
   perfil: 'perfil',
   onboarding: 'perfil',
-  entrenamiento: 'entrenamiento',
-  rutina: 'entrenamiento',
-  cardio: 'entrenamiento',
-  abdomen: 'entrenamiento',
-  calistenia: 'entrenamiento',
-  especial: 'entrenamiento',
-  entrenar: 'entrenamiento',
-  registro: 'entrenamiento',
-  historial: 'historial',
-  extra: 'historial',
 };
 
+// Pantallas de Plan, en el orden de sus pestañas.
+const PESTANAS_PLAN = [
+  { pantalla: 'rutina', etiqueta: 'Fuerza' },
+  { pantalla: 'abdomen', etiqueta: 'Core' },
+  { pantalla: 'cardio', etiqueta: 'Cardio' },
+  { pantalla: 'calistenia', etiqueta: 'Calistenia' },
+  { pantalla: 'especial', etiqueta: 'Especial' },
+];
+
 function irAPantalla(destino) {
+  if (PESTANAS_PLAN.some((p) => p.pantalla === destino)) estado.productoPlan = destino;
+  if (['historial', 'extra', 'peso'].includes(destino)) estado.progresoVista = destino;
   estado.pantalla = destino;
   render();
 }
 
+// Marcador para ejercicios sin foto (en lugar de un emoji).
+const ICONO_EJERCICIO = '<svg viewBox="0 0 24 24"><path d="M2.5 9.5h2v5h-2zM19.5 9.5h2v5h-2zM5 7h3v10H5zM16 7h3v10h-3zM8 11h8v2H8z"/></svg>';
+
+const ICONOS_NAV = {
+  hoy: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 9.5h2v5h-2zM19.5 9.5h2v5h-2zM5 7h3v10H5zM16 7h3v10h-3zM8 11h8v2H8z"/></svg>',
+  libreria: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h4.5v16H4zM10 4h4.5v16H10zM16.2 5.2l3.9-1 3.4 14.5-3.9 1z"/></svg>',
+  progreso: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V13h3.5v7zM10.25 20V8h3.5v12zM16.5 20V4H20v16z"/></svg>',
+  perfil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5zM3.5 21c.6-4.4 4-7 8.5-7s7.9 2.6 8.5 7z"/></svg>',
+};
+
 function renderNav() {
-  const seccion = SECCION_POR_PANTALLA[estado.pantalla] || 'perfil';
+  const seccion = SECCION_POR_PANTALLA[estado.pantalla] || 'hoy';
+  const destinos = [
+    { seccion: 'hoy', etiqueta: 'Hoy', pantalla: 'entrenamiento' },
+    { seccion: 'plan', etiqueta: 'Plan', pantalla: estado.productoPlan || 'rutina' },
+    { seccion: 'libreria', etiqueta: 'Librería', pantalla: 'libreria' },
+    { seccion: 'progreso', etiqueta: 'Progreso', pantalla: estado.progresoVista || 'historial' },
+    { seccion: 'perfil', etiqueta: 'Perfil', pantalla: 'perfil' },
+  ];
   navContainer.innerHTML = `
-    <div class="nav-inferior">
-      <button class="nav-item ${seccion === 'perfil' ? 'activo' : ''}" data-nav="perfil"><span class="icono">👤</span>Perfil</button>
-      <button class="nav-item ${seccion === 'entrenamiento' ? 'activo' : ''}" data-nav="entrenamiento"><span class="icono">🏋️</span>Entrenamiento</button>
-      <button class="nav-item ${seccion === 'historial' ? 'activo' : ''}" data-nav="historial"><span class="icono">📅</span>Historial</button>
-    </div>`;
+    <nav class="nav-inferior" aria-label="Secciones">
+      ${destinos.map((d) => `
+        <button type="button" class="nav-item ${seccion === d.seccion ? 'activo' : ''}" data-nav="${d.pantalla}" ${seccion === d.seccion ? 'aria-current="page"' : ''}>
+          <span class="icono">${ICONOS_NAV[d.seccion]}</span>${d.etiqueta}
+        </button>`).join('')}
+    </nav>`;
   navContainer.querySelectorAll('[data-nav]').forEach((btn) => {
-    btn.onclick = () => irAPantalla(btn.dataset.nav);
+    btn.onclick = () => {
+      libreria.eligiendoPara = null; // salir por la barra cancela "elegir de la librería"
+      if (btn.dataset.nav === 'especial') abrirEspecial();
+      else irAPantalla(btn.dataset.nav);
+    };
   });
 }
 
@@ -298,14 +346,26 @@ function controlesDevActivos() {
   }
 }
 
-// Cabecera común de toda pantalla de producto: siempre regresa al hub.
+// Cabecera común de toda pantalla de Plan: título, pestañas de producto y
+// el nombre/estado del producto abierto. Las pestañas se conectan en
+// conectarVolverEntrenamiento().
 function encabezadoProducto(titulo, subtitulo) {
+  const actual = PESTANAS_PLAN.some((p) => p.pantalla === estado.pantalla) ? estado.pantalla : estado.productoPlan;
   return `
-    <button type="button" class="g2-back" data-volver-entrenamiento>‹ Entrenamiento</button>
-    <header class="g2-appbar"><h1>${titulo}</h1>${subtitulo ? `<p>${subtitulo}</p>` : ''}</header>`;
+    <header class="g3-header"><h1>Plan</h1></header>
+    <div class="g3-tabs" role="tablist" aria-label="Productos">
+      ${PESTANAS_PLAN.map((p) => `<button type="button" role="tab" class="g3-tab ${p.pantalla === actual ? 'activo' : ''}" aria-selected="${p.pantalla === actual}" data-pestana-plan="${p.pantalla}">${p.etiqueta}</button>`).join('')}
+    </div>
+    <div class="g3-subheader"><h2>${titulo}</h2>${subtitulo ? `<p>${subtitulo}</p>` : ''}</div>`;
 }
 
 function conectarVolverEntrenamiento() {
+  app.querySelectorAll('[data-pestana-plan]').forEach((btn) => {
+    btn.onclick = () => {
+      if (btn.dataset.pestanaPlan === 'especial') abrirEspecial();
+      else irAPantalla(btn.dataset.pestanaPlan);
+    };
+  });
   app.querySelectorAll('[data-volver-entrenamiento]').forEach((btn) => {
     btn.onclick = () => irAPantalla('entrenamiento');
   });
@@ -393,16 +453,18 @@ function botonCrearPlanHtml(tipo) {
   return `<button type="button" class="boton-primario g2-cta" data-plan-accion="crear" ${activo ? 'disabled' : ''}>${activo ? 'Generando…' : 'Crear plan'}</button>`;
 }
 
-// Acciones secundarias del plan, detrás de "Ajustar plan" (progresivo).
+// Acciones secundarias del plan, en el menú "⋯" de arriba a la derecha.
 function bloqueAjustesPlan(tipo, { idRegenerarDia, idMensajeDia }) {
   const activo = estado.generacion[tipo].activo;
   return `
-    <details class="g2-disclosure g2-ajustes-plan">
-      <summary>Ajustar plan</summary>
-      <button type="button" class="boton-secundario" data-plan-accion="regenerar" ${activo ? 'disabled' : ''}>🔁 Regenerar plan o cambiar días</button>
-      <button type="button" class="boton-secundario" id="${idRegenerarDia}">🔄 Regenerar solo este día con IA</button>
-      <div id="${idMensajeDia}"></div>
-    </details>`;
+    <details class="g3-menu g2-ajustes-plan">
+      <summary aria-label="Ajustar plan">⋯</summary>
+      <div class="g3-menu-panel">
+        <button type="button" id="${idRegenerarDia}">Regenerar solo este día</button>
+        <button type="button" data-plan-accion="regenerar" ${activo ? 'disabled' : ''}>Regenerar plan o cambiar días</button>
+      </div>
+    </details>
+    <div id="${idMensajeDia}"></div>`;
 }
 
 function conectarAccionesPlan(tipo) {
@@ -413,43 +475,138 @@ function conectarAccionesPlan(tipo) {
 }
 
 // =========================================================================
-// Entrenamiento — el hub de TODOS los productos de entrenamiento. Cada
-// tarjeta tiene UNA acción principal: "Ver plan" si hay plan activo,
-// "Crear plan" si no (abre directamente la creación). No hay otro lugar
-// de la app que genere planes semanales.
+// Hoy (pantalla 'entrenamiento') — lo que toca hoy, la semana de un
+// vistazo y un botón para empezar. Lo de crear/regenerar planes vive en
+// Plan; aquí solo hay atajos.
 // =========================================================================
+const PRODUCTOS_HOY = {
+  fuerza: { datos: () => ({ dias: estado.dias, semana: estado.semanaActual || [], cargando: estado.cargandoRutina }), pantalla: 'rutina', origen: 'rutina' },
+  abdomen: { datos: () => ({ dias: estado.abdomen.dias, semana: estado.abdomen.semanaActual || [], cargando: estado.abdomen.cargando }), pantalla: 'abdomen', origen: 'abdomen' },
+  cardio: { datos: () => ({ dias: estado.cardio.dias, semana: estado.cardio.semanaActual || [], cargando: estado.cardio.cargando }), pantalla: 'cardio', origen: 'cardio' },
+};
+
+// Qué día del plan toca hoy: el que ya se hizo hoy (si hubo), si no el
+// primero (en orden) que no se ha hecho esta semana. Si la semana ya está
+// completa, el día 1 marcado como extra.
+function diaQueToca(tipo) {
+  const { dias, semana } = PRODUCTOS_HOY[tipo].datos();
+  if (!dias || dias.length === 0) return null;
+  const hoyStr = formatoFecha(new Date());
+  const hechoHoy = semana.find((c) => c.fecha === hoyStr && c.dia != null);
+  if (hechoHoy) {
+    const idx = dias.findIndex((d) => d.dia === hechoHoy.dia);
+    if (idx >= 0) return { idx, dia: dias[idx], hechoHoy: true, semanaCompleta: false };
+  }
+  const hechos = new Set(semana.filter((c) => c.dia != null).map((c) => c.dia));
+  const idx = dias.findIndex((d) => !hechos.has(d.dia));
+  if (idx >= 0) return { idx, dia: dias[idx], hechoHoy: false, semanaCompleta: false };
+  return { idx: 0, dia: dias[0], hechoHoy: false, semanaCompleta: true };
+}
+
+function resumenDia(tipo, dia) {
+  if (tipo === 'cardio') {
+    const min = (dia.fases || []).reduce((t, f) => t + (Number(f.duracion_min) || 0), 0);
+    return `${min} min`;
+  }
+  const n = dia.ejercicios?.length || 0;
+  return `${n} ejercicio${n === 1 ? '' : 's'}`;
+}
+
+function abrirDiaDePlan(tipo, idx) {
+  if (tipo === 'fuerza') estado.diaActivo = idx;
+  else estado[tipo].diaActivo = idx;
+  irAPantalla(PRODUCTOS_HOY[tipo].pantalla);
+}
+
+// "Empezar": abre el registro del primer ejercicio del día (Fuerza/Core) o
+// el día de cardio. Registro regresa a la pantalla del plan.
+function empezarDia(tipo, idx) {
+  const { dias } = PRODUCTOS_HOY[tipo].datos();
+  const dia = dias[idx];
+  if (tipo === 'cardio' || !dia.ejercicios?.length) { abrirDiaDePlan(tipo, idx); return; }
+  if (tipo === 'fuerza') estado.diaActivo = idx;
+  else estado[tipo].diaActivo = idx;
+  estado.ejercicioActivo = dia.ejercicios[0];
+  estado.pantallaOrigenRegistro = PRODUCTOS_HOY[tipo].origen;
+  irAPantalla('registro');
+}
+
 function renderEntrenamiento() {
   const puente = puenteEntrenamiento();
-  const objetivo = leerObjetivoEspecial();
   // Rutina preparada (generada, sin empezar) y sesión en curso viven en el
   // almacenamiento local del módulo (session-slots.mjs): sobreviven a
   // navegar y a recargar la página.
   const reanudar = puente?.getResumeState?.() ?? { active: false, preparedOrigin: null };
+  const hoy = new Date();
+  const hoyStr = formatoFecha(hoy);
+  const fechaTxt = hoy.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  const tarjetasPlanes = Object.entries(PLANES).map(([tipo, plan]) => {
-    const activo = planActivo(tipo);
-    const generando = estado.generacion[tipo].activo;
-    let estadoTxt = 'Sin plan activo';
-    if (generando) estadoTxt = 'Generando plan…';
-    else if (!activo && plan.cargando()) estadoTxt = 'Cargando…';
-    else if (activo) {
-      estadoTxt = `Plan activo · ${plan.dias().length} día(s) por semana`;
-      if (tipo === 'fuerza' && perfilForm.metas?.[0]) estadoTxt += ` · ${escaparHtml(perfilForm.metas[0])}`;
-    }
-    return `
-      <div class="g2-product-card">
-        <div class="g2-product-info">
-          <div class="g2-product-name">${plan.icono} ${plan.nombre}</div>
-          <div class="g2-product-status">${estadoTxt}</div>
+  // Semana: un día cuenta como hecho si se completó cualquier plan.
+  const semanas = Object.keys(PRODUCTOS_HOY).map((t) => PRODUCTOS_HOY[t].datos().semana);
+  const base = semanas.find((sem) => sem.length === 7);
+  const letras = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  let semanaHtml = '';
+  if (base) {
+    semanaHtml = `<div class="g3-semana" aria-label="Tu semana">${base.map((c, i) => {
+      const hecho = semanas.some((sem) => sem[i]?.dia != null);
+      const esHoy = c.fecha === hoyStr;
+      return `<div class="g3-semana-dia ${hecho ? 'hecho' : ''} ${esHoy ? 'hoy' : ''} ${c.esFuturo ? 'futuro' : ''}"><span>${letras[i]}</span><b>${hecho ? '✓' : '·'}</b></div>`;
+    }).join('')}</div>`;
+  }
+
+  const perfilIncompleto = perfilPrecargado && (!perfilForm.peso || !perfilForm.edad);
+  const fuerza = diaQueToca('fuerza');
+  const cargandoFuerza = !fuerza && estado.cargandoRutina;
+  const generandoFuerza = estado.generacion.fuerza.activo;
+
+  let heroHtml;
+  if (fuerza) {
+    const etiqueta = fuerza.hechoHoy ? 'Hecho hoy' : fuerza.semanaCompleta ? 'Semana completa · día extra' : 'Hoy toca';
+    heroHtml = `
+      <section class="g3-hero">
+        <div class="g3-hero-img" id="hoy-hero-img"></div>
+        <div class="g3-hero-info">
+          <span class="g3-eyebrow">${etiqueta} · Fuerza · Día ${fuerza.dia.dia} de ${estado.dias.length}</span>
+          <h2>${escaparHtml(fuerza.dia.nombre_dia || `Día ${fuerza.dia.dia}`)}</h2>
+          <p>${resumenDia('fuerza', fuerza.dia)}</p>
+          <button type="button" class="boton-primario" id="hoy-empezar">${fuerza.hechoHoy ? 'Seguir registrando' : 'Empezar entrenamiento'}</button>
+          <button type="button" class="g3-link" id="hoy-ver-dia">Ver el día completo</button>
         </div>
-        <button type="button" class="g2-btn-secondary" data-producto="${tipo}" data-activo="${activo ? '1' : ''}" ${!activo && generando ? 'disabled' : ''}>${activo ? 'Ver plan' : 'Crear plan'}</button>
-      </div>`;
+      </section>`;
+  } else if (cargandoFuerza) {
+    heroHtml = '<section class="g3-hero g3-hero-vacio"><div class="spinner"></div></section>';
+  } else {
+    heroHtml = `
+      <section class="g3-hero g3-hero-vacio">
+        <span class="g3-eyebrow">Fuerza</span>
+        <h2>${generandoFuerza ? 'Generando tu plan…' : 'Aún no tienes plan de fuerza'}</h2>
+        <p>${generandoFuerza ? 'Puedes seguir usando la app mientras tanto.' : 'Lo armamos con tu perfil: metas, días, equipo y lesiones.'}</p>
+        ${generandoFuerza ? '' : '<button type="button" class="boton-primario" id="hoy-crear-fuerza">Crear plan de fuerza</button>'}
+      </section>`;
+  }
+
+  const otros = ['abdomen', 'cardio'].map((tipo) => {
+    const t = diaQueToca(tipo);
+    if (!t) return '';
+    const nombre = PLANES[tipo].nombreCorto;
+    return `
+      <button type="button" class="g3-fila" data-hoy-producto="${tipo}" data-hoy-idx="${t.idx}">
+        <span class="g3-fila-info"><strong>${nombre} · Día ${t.dia.dia}</strong><span>${t.hechoHoy ? 'Hecho hoy' : resumenDia(tipo, t.dia)}</span></span>
+        <span class="g3-chevron" aria-hidden="true">›</span>
+      </button>`;
   }).join('');
 
   app.innerHTML = '';
   app.appendChild(h(`
-    <div>
-      <header class="g2-appbar"><h1>Entrenamiento</h1><p>Tus planes y sesiones</p></header>
+    <div class="g3-hoy">
+      <header class="g3-header">
+        <p class="g3-fecha">${escaparHtml(fechaTxt)}</p>
+        <h1>${perfilForm.nombre ? `Hola, ${escaparHtml(perfilForm.nombre)}` : 'Hoy'}</h1>
+      </header>
+      ${semanaHtml}
+      ${perfilIncompleto ? `
+        <div class="mensaje info g2-resume-banner">Completa tu perfil (peso y edad) para que tus planes se adapten a ti.
+          <button type="button" class="g2-link-btn" id="hoy-ir-perfil">Ir a Perfil →</button></div>` : ''}
       ${reanudar.active ? `
         <div class="mensaje info g2-resume-banner">
           Sesión en curso
@@ -460,29 +617,40 @@ function renderEntrenamiento() {
           Rutina preparada (${reanudar.preparedOrigin === 'especial' ? 'Entrenamiento especial' : 'Calistenia'})
           <button type="button" class="g2-link-btn" id="btn-continuar-preparada">Continuar →</button>
         </div>` : ''}
-      ${tarjetasPlanes}
-      <div class="g2-product-card">
-        <div class="g2-product-info">
-          <div class="g2-product-name">🤸 Calistenia</div>
-          <div class="g2-product-status">${reanudar.preparedOrigin === 'calistenia' ? 'Rutina preparada' : 'Sesión bajo demanda (aún no se guarda como plan)'}</div>
-        </div>
-        <button type="button" class="g2-btn-secondary" id="btn-calistenia">${reanudar.preparedOrigin === 'calistenia' ? 'Ver rutina' : 'Crear sesión'}</button>
-      </div>
-      <div class="g2-product-card">
-        <div class="g2-product-info">
-          <div class="g2-product-name">✨ Entrenamiento especial</div>
-          <div class="g2-product-status">${objetivo ? `Objetivo activo: “${escaparHtml(objetivo.text)}”` : 'Algo temporal o fuera de lo normal'}</div>
-        </div>
-        <button type="button" class="g2-btn-secondary" id="btn-especial">Abrir</button>
+      ${heroHtml}
+      ${otros ? `<h3 class="g3-seccion">También hoy</h3><div class="g3-lista">${otros}</div>` : ''}
+      <h3 class="g3-seccion">Algo distinto</h3>
+      <div class="g3-lista">
+        <button type="button" class="g3-fila" id="btn-calistenia">
+          <span class="g3-fila-info"><strong>Calistenia</strong><span>${reanudar.preparedOrigin === 'calistenia' ? 'Rutina preparada' : 'Sesión rápida con tu peso corporal'}</span></span>
+          <span class="g3-chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="g3-fila" id="btn-especial">
+          <span class="g3-fila-info"><strong>Entrenamiento especial</strong><span>Algo temporal o fuera de lo normal</span></span>
+          <span class="g3-chevron" aria-hidden="true">›</span>
+        </button>
       </div>
     </div>`));
 
-  app.querySelectorAll('[data-producto]').forEach((btn) => {
-    btn.onclick = () => {
-      const tipo = btn.dataset.producto;
-      if (btn.dataset.activo) irAPantalla(PLANES[tipo].pantalla);
-      else abrirGeneracionPlan(tipo, 'crear');
-    };
+  if (fuerza) {
+    document.getElementById('hoy-empezar').onclick = () => empezarDia('fuerza', fuerza.idx);
+    document.getElementById('hoy-ver-dia').onclick = () => abrirDiaDePlan('fuerza', fuerza.idx);
+    // Imagen del primer ejercicio del día, si existe (no bloquea el render).
+    const primero = fuerza.dia.ejercicios?.[0];
+    if (primero) {
+      primeraImagenEjercicio(primero, false)
+        .then((url) => {
+          const cont = document.getElementById('hoy-hero-img');
+          if (cont && url) cont.style.backgroundImage = `url("${encodeURI(url)}")`;
+        });
+    }
+  }
+  const crear = document.getElementById('hoy-crear-fuerza');
+  if (crear) crear.onclick = () => abrirGeneracionPlan('fuerza', 'crear');
+  const irPerfil = document.getElementById('hoy-ir-perfil');
+  if (irPerfil) irPerfil.onclick = () => irAPantalla('perfil');
+  app.querySelectorAll('[data-hoy-producto]').forEach((btn) => {
+    btn.onclick = () => abrirDiaDePlan(btn.dataset.hoyProducto, Number(btn.dataset.hoyIdx));
   });
   const continuar = document.getElementById('btn-continuar-sesion');
   if (continuar) continuar.onclick = () => irAPantalla('entrenar');
@@ -867,11 +1035,6 @@ function renderPerfil() {
       <div id="p-mensaje"></div>
       <button type="button" class="boton-primario" id="p-guardar">Guardar perfil</button>
 
-      <h2 class="titulo" style="font-size:16px;margin-top:30px;margin-bottom:2px">Tu peso corporal</h2>
-      <p class="subtitulo">Independiente del peso que usa la rutina — esto es tu historial en el tiempo</p>
-      <div id="peso-form"></div>
-      <div id="peso-grafica"></div>
-      <div id="peso-lista"></div>
 
       <button type="button" class="boton-secundario" id="p-salir" style="margin-top:24px">Cerrar sesión</button>
     </div>`));
@@ -961,7 +1124,6 @@ function renderPerfil() {
   pintarTarjetaInstalar();
   document.getElementById('p-guardar').onclick = guardarPerfil;
   document.getElementById('p-salir').onclick = () => supabase.auth.signOut();
-  renderPesoCorporal();
 }
 
 // Tarjeta "Instalar GymApp" (ver instalar.js). Vive en Perfil, el destino
@@ -1294,6 +1456,7 @@ async function cargarRutina() {
   const { data: ejercicios, error: ejerciciosError } = await supabase
     .from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)')
     .eq('rutina_id', rutina.id).order('dia').order('orden');
+  if (!ejerciciosError) await prepararLibreriaDeRutina(ejercicios);
 
   if (ejerciciosError) {
     estado.errorRutina = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
@@ -1398,6 +1561,7 @@ async function cargarRutinaAbdomen() {
   const { data: ejercicios, error: ejerciciosError } = await supabase
     .from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)')
     .eq('rutina_id', rutina.id).order('dia').order('orden');
+  if (!ejerciciosError) await prepararLibreriaDeRutina(ejercicios);
 
   if (ejerciciosError) {
     ab.error = `No se pudieron cargar los ejercicios: ${ejerciciosError.message}`;
@@ -1563,9 +1727,7 @@ function renderCardio() {
     return;
   }
 
-  const diasCompletadosEstaSemana = c.semanaActual.filter((x) => x.dia != null).length;
   const dia = c.dias[c.diaActivo];
-  const info = c.conteoDias[dia.dia] || { total: 0 };
   const yaCompletadoHoy = c.semanaActual.some((x) => x.fecha === formatoFecha(new Date()) && x.dia === dia.dia);
 
   const etiquetasFase = { calentamiento: 'Calentamiento', principal: 'Cardio principal', enfriamiento: 'Enfriamiento' };
@@ -1575,19 +1737,8 @@ function renderCardio() {
     <div>
       ${encabezadoProducto('Cardio', `${c.dias.length} día(s) por semana`)}
       ${bloqueEstadoGeneracion('cardio')}
-      <p class="subtitulo">${dia.nombre_dia}</p>
-      <div class="semana-calendario">
-        ${c.semanaActual.map((x) => `
-          <div class="celda-dia ${x.dia != null ? 'hecho' : ''} ${x.esFuturo ? 'futuro' : ''}">
-            <span class="etiqueta-dia">${x.etiqueta}</span>
-            <span class="valor-dia">${x.dia != null ? 'D' + x.dia : (x.esFuturo ? '' : '—')}</span>
-          </div>`).join('')}
-      </div>
-      <p class="subtitulo" style="margin-top:-6px">Esta semana: ${diasCompletadosEstaSemana}/${c.diasDisponibles} días planeados</p>
-      <div class="resumen-semana">
-        <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
-      </div>
       <div class="tabs-dias" id="tabs-dias-cardio"></div>
+      <h3 class="g3-dia-titulo">${escaparHtml(dia.nombre_dia || `Día ${dia.dia}`)}</h3>
       <div id="fases-cardio"></div>
       <div id="cardio-mensaje"></div>
       <button class="boton-primario" id="btn-marcar-cardio" ${yaCompletadoHoy ? 'disabled' : ''}>
@@ -1612,7 +1763,7 @@ function renderCardio() {
   dia.fases.forEach((f) => {
     fasesDiv.appendChild(h(`
       <div class="tarjeta-ejercicio">
-        <div class="ph">${f.fase === 'principal' ? '🔥' : '🚶'}</div>
+        <div class="ph" aria-hidden="true">${ICONO_EJERCICIO}</div>
         <div class="info">
           <div class="nombre">${etiquetasFase[f.fase]}: ${f.actividad}</div>
           <div class="detalle">Plan: ${f.duracion_min} min${f.intensidad ? ' · ' + f.intensidad : ''}</div>
@@ -1692,28 +1843,15 @@ function renderRutina() {
     return;
   }
 
-  const diasCompletadosEstaSemana = estado.semanaActual.filter((c) => c.dia != null).length;
   const dia = estado.dias[estado.diaActivo];
-  const info = estado.conteoDias[dia.dia] || { total: 0 };
 
   const cont = h('<div></div>');
   cont.appendChild(h(`
     <div>
       ${encabezadoProducto('Fuerza / Gimnasio', `${estado.dias.length} día(s) por semana${perfilForm.metas?.[0] ? ` · Meta principal: ${escaparHtml(perfilForm.metas[0])}` : ''}`)}
       ${bloqueEstadoGeneracion('fuerza')}
-      <p class="subtitulo">${dia.nombre_dia}</p>
-      <div class="semana-calendario">
-        ${estado.semanaActual.map((c) => `
-          <div class="celda-dia ${c.dia != null ? 'hecho' : ''} ${c.esFuturo ? 'futuro' : ''}">
-            <span class="etiqueta-dia">${c.etiqueta}</span>
-            <span class="valor-dia">${c.dia != null ? 'D' + c.dia : (c.esFuturo ? '' : '—')}</span>
-          </div>`).join('')}
-      </div>
-      <p class="subtitulo" style="margin-top:-6px">Esta semana: ${diasCompletadosEstaSemana}/${estado.diasDisponibles} días planeados (lunes a domingo)</p>
-      <div class="resumen-semana">
-        <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
-      </div>
       <div class="tabs-dias" id="tabs-dias"></div>
+      <h3 class="g3-dia-titulo">${escaparHtml(dia.nombre_dia || `Día ${dia.dia}`)}</h3>
       <div id="lista-ejercicios"></div>
       ${bloqueAjustesPlan('fuerza', { idRegenerarDia: 'btn-regenerar-dia', idMensajeDia: 'regen-mensaje' })}
     </div>`));
@@ -1732,11 +1870,11 @@ function renderRutina() {
 
   const listaDiv = document.getElementById('lista-ejercicios');
   dia.ejercicios.forEach((ej) => {
-    const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+    const nombre = escaparHtml(nombreEjercicio(ej));
     const altTxt = ej.alternativas?.length ? ` · ${ej.alternativas.length} alternativa(s)` : '';
     const tarjeta = h(`
       <div class="tarjeta-ejercicio">
-        <div class="ph">🏋️</div>
+        <div class="ph" aria-hidden="true">${ICONO_EJERCICIO}</div>
         <div class="info">
           <div class="nombre">${nombre}</div>
           <div class="detalle">${ej.series} series x ${ej.reps_objetivo} reps${altTxt}</div>
@@ -1752,11 +1890,11 @@ function renderRutina() {
     listaDiv.appendChild(tarjeta);
 
     // Foto miniatura real, si existe (no bloquea el render de la tarjeta).
-    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
-      .then(({ data }) => {
-        if (data && data[0]) {
+    primeraImagenEjercicio(ej)
+      .then((url) => {
+        if (url) {
           const ph = tarjeta.querySelector('.ph');
-          const img = h(`<img src="${data[0].url}" />`);
+          const img = h(`<img src="${url}" alt="" />`);
           ph.replaceWith(img);
         }
       });
@@ -1792,28 +1930,15 @@ function renderAbdomen() {
     return;
   }
 
-  const diasCompletadosEstaSemana = ab.semanaActual.filter((c) => c.dia != null).length;
   const dia = ab.dias[ab.diaActivo];
-  const info = ab.conteoDias[dia.dia] || { total: 0 };
 
   const cont = h('<div></div>');
   cont.appendChild(h(`
     <div>
       ${encabezadoProducto('Core / Abdomen', `${ab.dias.length} día(s) por semana`)}
       ${bloqueEstadoGeneracion('abdomen')}
-      <p class="subtitulo">${dia.nombre_dia}</p>
-      <div class="semana-calendario">
-        ${ab.semanaActual.map((c) => `
-          <div class="celda-dia ${c.dia != null ? 'hecho' : ''} ${c.esFuturo ? 'futuro' : ''}">
-            <span class="etiqueta-dia">${c.etiqueta}</span>
-            <span class="valor-dia">${c.dia != null ? 'D' + c.dia : (c.esFuturo ? '' : '—')}</span>
-          </div>`).join('')}
-      </div>
-      <p class="subtitulo" style="margin-top:-6px">Esta semana: ${diasCompletadosEstaSemana}/${ab.diasDisponibles} días planeados</p>
-      <div class="resumen-semana">
-        <div><div class="num">${info.total}</div><div class="txt">veces que hiciste ${dia.nombre_dia} (histórico)</div></div>
-      </div>
       <div class="tabs-dias" id="tabs-dias-ab"></div>
+      <h3 class="g3-dia-titulo">${escaparHtml(dia.nombre_dia || `Día ${dia.dia}`)}</h3>
       <div id="lista-ejercicios-ab"></div>
       ${bloqueAjustesPlan('abdomen', { idRegenerarDia: 'btn-regenerar-dia-ab', idMensajeDia: 'regen-mensaje-ab' })}
     </div>`));
@@ -1832,11 +1957,11 @@ function renderAbdomen() {
 
   const listaDiv = document.getElementById('lista-ejercicios-ab');
   dia.ejercicios.forEach((ej) => {
-    const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+    const nombre = escaparHtml(nombreEjercicio(ej));
     const altTxt = ej.alternativas?.length ? ` · ${ej.alternativas.length} alternativa(s)` : '';
     const tarjeta = h(`
       <div class="tarjeta-ejercicio">
-        <div class="ph">🔥</div>
+        <div class="ph" aria-hidden="true">${ICONO_EJERCICIO}</div>
         <div class="info">
           <div class="nombre">${nombre}</div>
           <div class="detalle">${ej.series} series x ${ej.reps_objetivo}${altTxt}</div>
@@ -1851,11 +1976,11 @@ function renderAbdomen() {
     };
     listaDiv.appendChild(tarjeta);
 
-    supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
-      .then(({ data }) => {
-        if (data && data[0]) {
+    primeraImagenEjercicio(ej)
+      .then((url) => {
+        if (url) {
           const ph = tarjeta.querySelector('.ph');
-          const img = h(`<img src="${data[0].url}" />`);
+          const img = h(`<img src="${url}" alt="" />`);
           ph.replaceWith(img);
         }
       });
@@ -1865,7 +1990,96 @@ function renderAbdomen() {
 // =========================================================================
 // Pantalla Registro — con precarga de lo ya guardado (corrige el bug)
 // =========================================================================
+// ---- Ejercicios de la librería dentro de la rutina (rediseño 003, US4) ----
+// Una fila de rutina_ejercicios puede traer `libreria_ejercicio_id` (columna
+// nueva, aditiva). Si viene, se muestra y se registra ese ejercicio de la
+// librería; `ejercicio_id` (legacy) se conserva tal cual. Mientras la columna
+// no exista en la base, todo se comporta como antes.
+function detectarColumnaLibreria(filas) {
+  if (filas && filas.length) estado.columnaLibreria = 'libreria_ejercicio_id' in filas[0];
+}
+
+// Sabe si la base ya tiene la columna aunque las rutinas no hayan cargado
+// (p. ej. abrir Progreso justo al entrar). Una sola consulta y se recuerda.
+async function asegurarColumnaLibreria() {
+  if (typeof estado.columnaLibreria === 'boolean') return estado.columnaLibreria;
+  const { error } = await supabase.from('series_registradas').select('libreria_ejercicio_id').limit(1);
+  if (typeof estado.columnaLibreria !== 'boolean') estado.columnaLibreria = !error;
+  return estado.columnaLibreria;
+}
+
+async function prepararLibreriaDeRutina(filas) {
+  detectarColumnaLibreria(filas);
+  if ((filas || []).some((f) => f.libreria_ejercicio_id)) await cargarLibreria();
+}
+
+function registroLibreriaDe(ej) {
+  if (!ej?.libreria_ejercicio_id || !libreria.registros) return null;
+  return libreria.registros.find((r) => r.exercise_id === ej.libreria_ejercicio_id) || null;
+}
+
+function nombreEjercicio(ej) {
+  const reg = registroLibreriaDe(ej);
+  if (reg) return nombreEjercicioLibreria(reg);
+  if (ej?.libreria_ejercicio_id) return 'Ejercicio de la librería';
+  return ej?.ejercicios?.nombre || ej?.ejercicio_id || '';
+}
+
+// Primera imagen del ejercicio (lámina de la librería o foto legacy).
+function primeraImagenEjercicio(ej, mini = true) {
+  if (ej.libreria_ejercicio_id) return Promise.resolve(imagenLibreria(ej.libreria_ejercicio_id, mini));
+  return supabase.from('ejercicio_imagenes').select('url').eq('ejercicio_id', ej.ejercicio_id).order('orden').limit(1)
+    .then(({ data }) => data?.[0]?.url || null);
+}
+
+// Filtra series_registradas por el ejercicio que de verdad se hizo: el de la
+// librería si se eligió uno; si no, el legacy (sin contar series hechas con un
+// ejercicio de la librería sobre esa misma fila).
+// Con { porFila: true } (las series de HOY de una fila de la rutina) también
+// se filtra por el ejercicio legacy de la fila, para que dos filas con el
+// mismo ejercicio de la librería no compartan series.
+function filtrarSeriesDe(consulta, ej, { porFila = false } = {}) {
+  if (ej.libreria_ejercicio_id) {
+    consulta = consulta.eq('libreria_ejercicio_id', ej.libreria_ejercicio_id);
+    return porFila ? consulta.eq('ejercicio_id', ej.ejercicio_id) : consulta;
+  }
+  consulta = consulta.eq('ejercicio_id', ej.ejercicio_id);
+  return estado.columnaLibreria ? consulta.is('libreria_ejercicio_id', null) : consulta;
+}
+
+// Abre la Librería para elegir con qué ejercicio reemplazar el de la rutina.
+function elegirDeLibreria() {
+  detenerDescanso();
+  libreria.eligiendoPara = estado.ejercicioActivo;
+  estado.pantalla = 'libreria';
+  render();
+  window.scrollTo(0, 0);
+}
+
+async function cambiarPorLibreria(exerciseId) {
+  const ej = libreria.eligiendoPara;
+  if (!ej) return;
+  const { error } = await supabase.from('rutina_ejercicios')
+    .update({ libreria_ejercicio_id: exerciseId })
+    .eq('id', ej.id);
+  if (error) return error;
+  libreria.eligiendoPara = null;
+  if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
+  else await cargarRutina();
+  estado.ejercicioActivo = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id) || estado.ejercicioActivo;
+  estado.pantalla = 'registro';
+  render();
+  window.scrollTo(0, 0);
+  return null;
+}
+
+// Cada renderRegistro() invalida al anterior: con Anterior/Siguiente, una
+// respuesta lenta del ejercicio A no debe pintar (ni guardar) sobre el B.
+let registroVigente = 0;
+
 async function renderRegistro() {
+  const token = ++registroVigente;
+  const vigente = () => token === registroVigente && estado.pantalla === 'registro';
   app.innerHTML = '';
 
   if (!estado.ejercicioActivo) {
@@ -1878,28 +2092,63 @@ async function renderRegistro() {
   }
 
   const ej = estado.ejercicioActivo;
-  const nombre = ej.ejercicios?.nombre || ej.ejercicio_id;
+  const nombre = nombreEjercicio(ej);
+  const regLib = registroLibreriaDe(ej);
+  const grupoMuscular = regLib
+    ? (GRUPOS_LIBRERIA.find((g) => g.id === gruposDeEjercicio(regLib)[0])?.etiqueta || '').toLowerCase()
+    : ej.ejercicios?.grupo_muscular;
+  const delDia = ejerciciosDelDiaRegistro();
+  const pos = delDia.findIndex((x) => x.id === ej.id);
+  const anterior = pos > 0 ? delDia[pos - 1] : null;
+  const siguiente = pos >= 0 && pos < delDia.length - 1 ? delDia[pos + 1] : null;
 
+  // Modo entrenando (rediseño 003, US3): un ejercicio a la vez, a pantalla
+  // completa (sin barra de abajo), con anterior/siguiente del mismo día.
+  // Las escrituras a sesiones_entrenamiento y series_registradas son las
+  // mismas de antes.
   app.appendChild(h(`
-    <div>
-      <h1 class="titulo">${nombre}</h1>
-      <p class="subtitulo">Objetivo: ${ej.series} series x ${ej.reps_objetivo} reps</p>
-      <div id="reg-progreso"></div>
+    <div class="g3-enfoque">
+      <div class="g3-enfoque-top">
+        <span>${pos >= 0 ? `Ejercicio ${pos + 1} de ${delDia.length}` : 'Registro'}</span>
+        <button type="button" class="g3-link" id="reg-volver">Terminar</button>
+      </div>
+      ${pos >= 0 ? `<div class="g3-progreso-barra" role="progressbar" aria-valuemin="0" aria-valuemax="${delDia.length}" aria-valuenow="${pos + 1}"><i style="width:${Math.round(((pos + 1) / delDia.length) * 100)}%"></i></div>` : ''}
       <div id="reg-imagenes"><div class="sin-imagen">Buscando fotos de referencia…</div></div>
-      <div id="reg-guia" class="guia-musculo">Trabaja: <strong>${ej.ejercicios?.grupo_muscular || 'este grupo muscular'}</strong>. Enfócate en sentir el músculo objetivo trabajando, con movimientos controlados — no en levantar el peso como sea.</div>
-      <div id="reg-alternativas"></div>
+      <h1 class="titulo">${escaparHtml(nombre)}</h1>
+      <p class="subtitulo">Objetivo: ${ej.series} series × ${escaparHtml(ej.reps_objetivo)} reps</p>
+      <div id="reg-guia" class="guia-musculo">Trabaja: <strong>${escaparHtml(grupoMuscular || 'este grupo muscular')}</strong>. Movimientos controlados; siente el músculo, no levantes el peso como sea.</div>
+      <div id="reg-progreso"></div>
       <div id="reg-mensaje"></div>
       <div class="tabla-series" id="reg-tabla"><div class="pantalla-carga"><div class="spinner"></div></div></div>
-      <button class="boton-primario" id="reg-volver">Volver a mi rutina</button>
+      <div class="g3-enfoque-nav">
+        <button type="button" class="boton-secundario-caja" id="reg-anterior" ${anterior ? '' : 'disabled'}>‹ Anterior</button>
+        <button type="button" class="boton-primario" id="reg-siguiente">${siguiente ? 'Siguiente ›' : 'Terminar'}</button>
+      </div>
+      <button type="button" class="boton-secundario" id="reg-cambiar">Cambiar este ejercicio</button>
+      <div id="reg-alternativas" hidden></div>
     </div>`));
 
-  document.getElementById('reg-volver').onclick = () => { estado.pantalla = estado.pantallaOrigenRegistro || 'rutina'; render(); };
+  const volverAlPlan = () => { detenerDescanso(); estado.pantalla = estado.pantallaOrigenRegistro || 'rutina'; render(); };
+  document.getElementById('reg-volver').onclick = volverAlPlan;
+  const irA = (otro) => { detenerDescanso(); estado.ejercicioActivo = otro; renderRegistro(); window.scrollTo(0, 0); };
+  if (anterior) document.getElementById('reg-anterior').onclick = () => irA(anterior);
+  document.getElementById('reg-siguiente').onclick = () => (siguiente ? irA(siguiente) : volverAlPlan());
+  document.getElementById('reg-cambiar').onclick = () => {
+    const cont = document.getElementById('reg-alternativas');
+    cont.hidden = !cont.hidden;
+    if (!cont.hidden) cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // ---- Imágenes principales (grandes) ----
-  supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
+  if (ej.libreria_ejercicio_id) {
+    const url = imagenLibreria(ej.libreria_ejercicio_id, false);
+    document.getElementById('reg-imagenes').innerHTML = url
+      ? `<img class="g3-ficha-img" src="${url}" alt="Lámina de ${escaparHtml(nombre)}" />`
+      : '<div class="sin-imagen">Este ejercicio de la librería todavía no tiene lámina.</div>';
+  } else supabase.from('ejercicio_imagenes').select('tipo, url, orden').eq('ejercicio_id', ej.ejercicio_id).order('orden')
     .then(({ data }) => {
       const cont = document.getElementById('reg-imagenes');
-      if (!cont) return;
+      if (!cont || !vigente()) return;
       if (!data || data.length === 0) {
         cont.innerHTML = '<div class="sin-imagen">Sin foto de referencia para este ejercicio todavía.</div>';
         return;
@@ -1912,14 +2161,14 @@ async function renderRegistro() {
 
   // ---- Toggle: ¿este ejercicio usa peso de asistencia? ----
   const toggleAsistidoDiv = h(`
-    <div class="toggle-fila ${ej.peso_asistido ? 'activo' : ''}" id="toggle-asistido" style="margin-bottom:14px">
+    <div class="toggle-fila ${ej.peso_asistido ? 'activo' : ''}" id="toggle-asistido" style="margin-top:14px">
       <div class="toggle-dot"></div>
       <div class="toggle-texto">
         <strong>Es un ejercicio de asistencia</strong>
         <span>Ej. dominadas asistidas: MENOS peso en la máquina = más difícil. Actívalo para que el progreso se interprete al revés.</span>
       </div>
     </div>`);
-  document.getElementById('reg-guia').insertAdjacentElement('afterend', toggleAsistidoDiv);
+  document.getElementById('reg-alternativas').insertAdjacentElement('afterend', toggleAsistidoDiv);
   toggleAsistidoDiv.onclick = async () => {
     const nuevoValor = !ej.peso_asistido;
     await supabase.from('rutina_ejercicios').update({ peso_asistido: nuevoValor }).eq('id', ej.id);
@@ -1928,12 +2177,11 @@ async function renderRegistro() {
   };
 
   // ---- Progreso / estancamiento (por sesión) + estancamiento por semanas ----
-  supabase.from('series_registradas')
-    .select('peso_kg, repeticiones, sesiones_entrenamiento!inner(fecha)')
-    .eq('ejercicio_id', ej.ejercicio_id)
+  filtrarSeriesDe(supabase.from('series_registradas')
+    .select('peso_kg, repeticiones, sesiones_entrenamiento!inner(fecha)'), ej)
     .then(({ data }) => {
       const cont = document.getElementById('reg-progreso');
-      if (!cont || !data) return;
+      if (!cont || !data || !vigente()) return;
 
       const hayPeso = data.some((s) => s.peso_kg != null && s.peso_kg > 0);
       // Si nunca se registra peso (ej. Wall Angel, puro peso corporal), usamos
@@ -1972,7 +2220,7 @@ async function renderRegistro() {
           <div class="bloque-progreso estancado" style="margin-top:8px">
             ⚠️ Llevas ${estancSemanas.semanas} semanas seguidas sin mejorar en este ejercicio (${estancSemanas.valor}${unidad}).
             <div style="margin-top:6px;font-weight:400">Opciones a considerar: ${hayPeso ? 'ajusta el peso aunque bajes 1-2 reps' : 'suma 1-2 repeticiones aunque sea con más esfuerzo'}, cambia el rango de repeticiones, o dale unos días de descanso extra a este grupo muscular (deload).</div>
-            <button class="btn-usar-alt" id="btn-ver-alternativas" style="margin-top:10px">Ver alternativas de este ejercicio ↓</button>
+            <button class="btn-usar-alt" id="btn-ver-alternativas" style="margin-top:10px">Ver alternativas de este ejercicio</button>
           </div>`;
       }
 
@@ -1980,7 +2228,10 @@ async function renderRegistro() {
       const btnVerAlt = document.getElementById('btn-ver-alternativas');
       if (btnVerAlt) {
         btnVerAlt.onclick = () => {
-          document.getElementById('reg-alternativas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const contAlt = document.getElementById('reg-alternativas');
+          if (!contAlt) return;
+          contAlt.hidden = false;
+          contAlt.scrollIntoView({ behavior: 'smooth', block: 'start' });
         };
       }
     });
@@ -1989,16 +2240,39 @@ async function renderRegistro() {
   const contAlt = document.getElementById('reg-alternativas');
   contAlt.innerHTML = `
     <div class="bloque-alternativas">
-      <span class="etiqueta">Si no puedes hacer este ejercicio</span>
+      <span class="etiqueta">Cambiar por</span>
+      ${estado.columnaLibreria ? `<button type="button" class="g3-fila" id="alt-libreria">
+        <span class="g3-fila-info"><strong>Elegir de la librería</strong><span>Busca entre todos los ejercicios con su lámina</span></span>
+        <span class="g3-chevron" aria-hidden="true">›</span>
+      </button>` : ''}
+      ${ej.libreria_ejercicio_id ? `<button type="button" class="boton-secundario" id="alt-original">Volver a ${escaparHtml(ej.ejercicios?.nombre || 'mi ejercicio original')}</button>` : ''}
       <div id="alt-filas"></div>
       <div id="alt-buscador"></div>
     </div>`;
   const filasDiv = document.getElementById('alt-filas');
+  const btnAltLibreria = document.getElementById('alt-libreria');
+  if (btnAltLibreria) btnAltLibreria.onclick = elegirDeLibreria;
+  const btnAltOriginal = document.getElementById('alt-original');
+  if (btnAltOriginal) {
+    btnAltOriginal.onclick = async () => {
+      btnAltOriginal.disabled = true;
+      const { error } = await supabase.from('rutina_ejercicios').update({ libreria_ejercicio_id: null }).eq('id', ej.id);
+      if (error) {
+        btnAltOriginal.disabled = false;
+        document.getElementById('reg-mensaje').innerHTML = `<div class="mensaje error">No se pudo cambiar el ejercicio: ${escaparHtml(error.message)}</div>`;
+        return;
+      }
+      if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
+      else await cargarRutina();
+      estado.ejercicioActivo = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id) || ej;
+      if (estado.pantalla === 'registro') render();
+    };
+  }
 
   (ej.alternativas || []).forEach((alt) => {
     const fila = h(`
       <div class="fila-alt">
-        <div class="ph">🏋️</div>
+        <div class="ph" aria-hidden="true">${ICONO_EJERCICIO}</div>
         <div class="info"><div class="nombre">${alt.nombre}</div><div class="motivo">${alt.motivo}</div></div>
         <button class="btn-usar-alt">Usar esta</button>
       </div>`);
@@ -2037,6 +2311,7 @@ async function renderRegistro() {
       const { data } = await supabase
         .from('ejercicios').select('id, nombre, equipo')
         .ilike('nombre', `%${texto}%`).limit(5);
+      if (!vigente()) return;
       if (!data || data.length === 0) {
         resDiv.innerHTML = '<p class="subtitulo" style="margin-top:8px">Sin resultados.</p>';
         return;
@@ -2045,7 +2320,7 @@ async function renderRegistro() {
       data.forEach((res) => {
         const fila = h(`
           <div class="fila-alt" style="margin-top:8px">
-            <div class="ph">🏋️</div>
+            <div class="ph" aria-hidden="true">${ICONO_EJERCICIO}</div>
             <div class="info"><div class="nombre">${res.nombre}</div><div class="motivo">${res.equipo}</div></div>
             <button class="btn-usar-alt">Agregar</button>
           </div>`);
@@ -2063,6 +2338,7 @@ async function renderRegistro() {
     .from('sesiones_entrenamiento').select('id')
     .eq('usuario_id', userId).eq('rutina_id', ej.rutina_id).eq('fecha', hoy).eq('dia', ej.dia)
     .maybeSingle();
+  if (!vigente()) return;
 
   let sesionId;
   if (sesionExistente) {
@@ -2072,6 +2348,7 @@ async function renderRegistro() {
       .from('sesiones_entrenamiento')
       .insert({ usuario_id: userId, rutina_id: ej.rutina_id, fecha: hoy, dia: ej.dia })
       .select('id').single();
+    if (!vigente()) return;
     if (error) {
       document.getElementById('reg-tabla').innerHTML = `<div class="mensaje error">No se pudo crear la sesión: ${error.message}</div>`;
       return;
@@ -2080,29 +2357,30 @@ async function renderRegistro() {
   }
 
   // Traer lo que YA se guardó hoy para este ejercicio, para no perderlo al salir y volver.
-  const { data: seriesGuardadas } = await supabase
+  const { data: seriesGuardadas } = await filtrarSeriesDe(supabase
     .from('series_registradas').select('id, numero_serie, peso_kg, repeticiones, rir')
-    .eq('sesion_id', sesionId).eq('ejercicio_id', ej.ejercicio_id).order('numero_serie');
+    .eq('sesion_id', sesionId), ej, { porFila: true }).order('numero_serie');
+  if (!vigente()) return;
 
   const guardadasPorNumero = {};
   for (const s of seriesGuardadas || []) guardadasPorNumero[s.numero_serie] = s;
 
   // ---- Sugerencia de peso, basada en tu RIR de la última sesión (no hoy) ----
-  const sugerencia = await sugerirProgresion(ej.ejercicio_id, userId, hoy, ej.peso_asistido);
+  const sugerencia = await sugerirProgresion(ej, userId, hoy, ej.peso_asistido);
+  if (!vigente()) return;
   if (sugerencia) {
     const cont = document.getElementById('reg-guia');
-    cont.insertAdjacentHTML('beforebegin', `<div class="mensaje info">💡 ${sugerencia.texto}</div>`);
+    cont.insertAdjacentHTML('beforebegin', `<div class="g3-sugerencia">${escaparHtml(sugerencia.texto)}</div>`);
   }
 
   const numSeries = ej.series || 3;
-  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null);
+  pintarTablaSeries(sesionId, ej.ejercicio_id, numSeries, guardadasPorNumero, sugerencia?.peso ?? null, ej.libreria_ejercicio_id || null);
 }
 
-async function sugerirProgresion(ejercicioId, userId, hoyStr, esAsistido) {
-  const { data } = await supabase
+async function sugerirProgresion(ej, userId, hoyStr, esAsistido) {
+  const { data } = await filtrarSeriesDe(supabase
     .from('series_registradas')
-    .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)')
-    .eq('ejercicio_id', ejercicioId)
+    .select('peso_kg, rir, sesiones_entrenamiento!inner(fecha, usuario_id)'), ej)
     .eq('sesiones_entrenamiento.usuario_id', userId)
     .not('peso_kg', 'is', null)
     .neq('sesiones_entrenamiento.fecha', hoyStr);
@@ -2135,7 +2413,7 @@ async function sugerirProgresion(ejercicioId, userId, hoyStr, esAsistido) {
   return { peso: pesoMax, texto: `Sugerido: continúa con ${pesoMax}kg (igual que tu última vez).` };
 }
 
-function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero, pesoSugerido) {
+function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero, pesoSugerido, libreriaId = null) {
   const tabla = document.getElementById('reg-tabla');
   tabla.innerHTML = `
     <div class="fila-encabezado"><span></span><span>Kg</span><span>Reps</span><span>RIR</span><span></span></div>
@@ -2151,7 +2429,7 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
         <input type="number" id="peso-${i}" value="${valorPeso}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="reps-${i}" value="${guardada?.repeticiones ?? ''}" ${guardada ? 'disabled' : ''} />
         <input type="number" id="rir-${i}" value="${guardada?.rir ?? ''}" ${guardada ? 'disabled' : ''} />
-        <button class="btn-guardar-serie ${guardada ? 'hecha' : ''}" id="btn-${i}">${guardada ? 'Editar' : 'Guardar'}</button>
+        <button class="btn-guardar-serie ${guardada ? 'hecha' : ''}" id="btn-${i}" aria-label="${guardada ? `Editar serie ${i}` : `Guardar serie ${i}`}">${guardada ? '✓' : 'Guardar'}</button>
       </div>`);
     filasDiv.appendChild(fila);
 
@@ -2186,6 +2464,7 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
         ? await supabase.from('series_registradas').update(valores).eq('id', guardada.id).select().single()
         : await supabase.from('series_registradas').insert({
             sesion_id: sesionId, ejercicio_id: ejercicioId, numero_serie: i, ...valores,
+            ...(libreriaId ? { libreria_ejercicio_id: libreriaId } : {}),
           }).select().single();
 
       if (error) {
@@ -2199,12 +2478,13 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
       guardada = fila; // ahora sí existe (o se actualizó) — el próximo clic vuelve a ser "editar"
       btn().disabled = false;
       btn().classList.add('hecha');
-      btn().textContent = 'Editar';
+      btn().textContent = '✓';
+      btn().setAttribute('aria-label', `Editar serie ${i}`);
       pesoInput().disabled = true;
       repsInput().disabled = true;
       rirInput().disabled = true;
 
-      if (eraNueva && i < numSeries) iniciarDescanso(90);
+      if (eraNueva && i < numSeries) iniciarDescanso(90, { siguiente: `Siguiente: serie ${i + 1} de ${numSeries}` });
     };
 
     btn().onclick = () => {
@@ -2219,26 +2499,67 @@ function pintarTablaSeries(sesionId, ejercicioId, numSeries, guardadasPorNumero,
   }
 }
 
-// ---- Temporizador de descanso entre series ----
+// Ejercicios del mismo día que el ejercicio en registro (para
+// anterior/siguiente), según de qué plan se abrió.
+function ejerciciosDelDiaRegistro() {
+  const ej = estado.ejercicioActivo;
+  if (!ej) return [];
+  const dias = estado.pantallaOrigenRegistro === 'abdomen' ? estado.abdomen.dias : estado.dias;
+  return (dias || []).find((d) => d.dia === ej.dia)?.ejercicios || [];
+}
+
+// ---- Descanso entre series (rediseño 003: a pantalla completa) ----
+// Cronómetro grande con ±15 s y, si la máquina está ocupada, las
+// alternativas del ejercicio a un toque (mismo usarAlternativa() de
+// siempre).
 let descansoInterval = null;
 
-function iniciarDescanso(segundosIniciales) {
+function iniciarDescanso(segundosIniciales, { siguiente = '' } = {}) {
   detenerDescanso();
   let restante = segundosIniciales;
+  const alternativas = estado.ejercicioActivo?.alternativas || [];
 
-  const banner = h(`
-    <div class="banner-descanso" id="banner-descanso">
-      <span>Descanso: <strong id="descanso-num">${formatoTiempo(restante)}</strong></span>
-      <button id="descanso-saltar">Saltar</button>
+  const capa = h(`
+    <div class="g3-descanso" id="banner-descanso" role="dialog" aria-label="Descanso">
+      <span class="g3-eyebrow">Descanso</span>
+      <strong class="g3-descanso-tiempo" id="descanso-num">${formatoTiempo(restante)}</strong>
+      <div class="g3-descanso-botones">
+        <button type="button" data-ajuste="-15">−15 s</button>
+        <button type="button" data-ajuste="15">+15 s</button>
+        <button type="button" id="descanso-saltar">Saltar</button>
+      </div>
+      ${siguiente ? `<p>${escaparHtml(siguiente)}</p>` : ''}
+      ${alternativas.length ? `
+        <div class="g3-descanso-alt">
+          <span class="g3-seccion">¿Máquina ocupada? Cambia por</span>
+          ${alternativas.map((alt, idx) => `
+            <button type="button" class="g3-fila" data-alt-idx="${idx}">
+              <span class="g3-fila-info"><strong>${escaparHtml(alt.nombre)}</strong><span>${escaparHtml(alt.motivo || '')}</span></span>
+              <span class="g3-chevron" aria-hidden="true">›</span>
+            </button>`).join('')}
+        </div>` : ''}
     </div>`);
-  document.body.appendChild(banner);
+  document.body.appendChild(capa);
   document.getElementById('descanso-saltar').onclick = detenerDescanso;
+  capa.querySelectorAll('[data-ajuste]').forEach((btn) => {
+    btn.onclick = () => {
+      restante = Math.max(5, restante + Number(btn.dataset.ajuste));
+      document.getElementById('descanso-num').textContent = formatoTiempo(restante);
+    };
+  });
+  capa.querySelectorAll('[data-alt-idx]').forEach((btn) => {
+    btn.onclick = () => { const alt = alternativas[Number(btn.dataset.altIdx)]; detenerDescanso(); usarAlternativa(alt); };
+  });
 
   descansoInterval = setInterval(() => {
     restante--;
     const num = document.getElementById('descanso-num');
     if (!num) { detenerDescanso(); return; }
-    if (restante <= 0) { detenerDescanso(); return; }
+    if (restante <= 0) {
+      detenerDescanso();
+      if (navigator.vibrate) navigator.vibrate(200);
+      return;
+    }
     num.textContent = formatoTiempo(restante);
   }, 1000);
 }
@@ -2322,10 +2643,12 @@ async function usarAlternativa(alt) {
   const ej = estado.ejercicioActivo;
   const otras = (ej.alternativas || []).filter((a) => a.ejercicio_id !== alt.ejercicio_id);
   const anterior = { ejercicio_id: ej.ejercicio_id, nombre: ej.ejercicios?.nombre || ej.ejercicio_id, motivo: 'Tu ejercicio anterior — regresa a este si prefieres.' };
+  // Si la fila traía un ejercicio de la librería, una alternativa legacy lo reemplaza.
+  const limpiarLibreria = ej.libreria_ejercicio_id ? { libreria_ejercicio_id: null } : {};
   const nuevasAlternativas = [anterior, ...otras].slice(0, 2);
 
   const { error } = await supabase.from('rutina_ejercicios')
-    .update({ ejercicio_id: alt.ejercicio_id, alternativas: nuevasAlternativas })
+    .update({ ejercicio_id: alt.ejercicio_id, alternativas: nuevasAlternativas, ...limpiarLibreria })
     .eq('id', ej.id);
 
   if (error) {
@@ -2335,7 +2658,15 @@ async function usarAlternativa(alt) {
 
   if (estado.pantallaOrigenRegistro === 'abdomen') await cargarRutinaAbdomen();
   else await cargarRutina();
-  estado.pantalla = estado.pantallaOrigenRegistro || 'rutina';
+  // Rediseño 003: seguir entrenando con el ejercicio nuevo (misma fila de
+  // la rutina, ya recargada) en vez de regresar al plan.
+  const fila = ejerciciosDelDiaRegistro().find((x) => x.id === ej.id);
+  if (fila) {
+    estado.ejercicioActivo = fila;
+    estado.pantalla = 'registro';
+  } else {
+    estado.pantalla = estado.pantallaOrigenRegistro || 'rutina';
+  }
   render();
 }
 
@@ -2364,38 +2695,103 @@ async function agregarAlternativaManual(resultado) {
 // =========================================================================
 // Historial
 // =========================================================================
+// Encabezado común de Progreso: entrenos, actividad extra y peso corporal.
+const PESTANAS_PROGRESO = [
+  { pantalla: 'historial', etiqueta: 'Entrenos' },
+  { pantalla: 'extra', etiqueta: 'Actividad extra' },
+  { pantalla: 'peso', etiqueta: 'Peso corporal' },
+];
+
+function encabezadoProgreso() {
+  return `
+    <header class="g3-header"><h1>Progreso</h1></header>
+    <div class="g3-tabs" role="tablist" aria-label="Progreso">
+      ${PESTANAS_PROGRESO.map((p) => `<button type="button" role="tab" class="g3-tab ${p.pantalla === estado.pantalla ? 'activo' : ''}" aria-selected="${p.pantalla === estado.pantalla}" data-pestana-progreso="${p.pantalla}">${p.etiqueta}</button>`).join('')}
+    </div>`;
+}
+
+function conectarPestanasProgreso() {
+  app.querySelectorAll('[data-pestana-progreso]').forEach((btn) => {
+    btn.onclick = () => irAPantalla(btn.dataset.pestanaProgreso);
+  });
+}
+
+// Resumen de constancia: sesiones del mes, semanas seguidas con al menos
+// una sesión y sesiones por semana (últimas 6). Pura, para poder probarla.
+function resumenConstancia(fechas, hoyStr) {
+  const mes = hoyStr.slice(0, 7);
+  const delMes = new Set(fechas.filter((f) => f.slice(0, 7) === mes)).size;
+  const porSemana = {};
+  for (const f of new Set(fechas)) {
+    const k = formatoFecha(inicioDeSemana(f));
+    porSemana[k] = (porSemana[k] || 0) + 1;
+  }
+  const semanas = [];
+  const inicio = inicioDeSemana(hoyStr);
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(inicio);
+    d.setDate(d.getDate() - i * 7);
+    const k = formatoFecha(d);
+    semanas.push({ semana: k, sesiones: porSemana[k] || 0 });
+  }
+  // La racha se cuenta sobre todas las fechas, no solo las 6 semanas de la
+  // gráfica. La semana actual cuenta solo si ya tiene sesiones.
+  let racha = 0;
+  const cursor = new Date(inicio);
+  if (!porSemana[formatoFecha(cursor)]) cursor.setDate(cursor.getDate() - 7);
+  while (porSemana[formatoFecha(cursor)]) {
+    racha++;
+    cursor.setDate(cursor.getDate() - 7);
+  }
+  return { delMes, racha, semanas };
+}
+
 async function renderHistorial() {
-  app.innerHTML = '<div class="pantalla-carga"><div class="spinner"></div></div>';
+  app.innerHTML = `${encabezadoProgreso()}<div class="pantalla-carga"><div class="spinner"></div></div>`;
+  conectarPestanasProgreso();
 
   const userId = estado.sesion.user.id;
   const { data: sesiones, error } = await supabase
     .from('sesiones_entrenamiento').select('id, fecha, dia, rutinas(tipo, nombre)')
     .eq('usuario_id', userId).order('fecha', { ascending: false }).limit(30);
+  // Las estadísticas usan todas las fechas (solo esa columna), no solo las
+  // 30 sesiones recientes de la lista: Fuerza, Core y Cardio son sesiones
+  // separadas el mismo día.
+  const { data: todasFechas } = error ? { data: null } : await supabase
+    .from('sesiones_entrenamiento').select('fecha')
+    .eq('usuario_id', userId).order('fecha', { ascending: false });
+  if (estado.pantalla !== 'historial') return;
 
-  // Registrar actividad extra (escalada, calistenia libre, etc.) vive aquí:
-  // es actividad ya hecha, no un plan — Historial es su único acceso.
-  const encabezado = `
-    <header class="g2-appbar"><h1>Historial</h1><p>Lo que ya entrenaste</p></header>
-    <button type="button" class="boton-secundario" id="btn-actividad-extra" style="text-align:left;padding-left:0">➕ Registrar o ver actividad extra</button>`;
-  const conectarExtra = () => { document.getElementById('btn-actividad-extra').onclick = () => irAPantalla('extra'); };
-
-  if (error) { app.innerHTML = `<div class="mensaje error">${error.message}</div>`; return; }
+  if (error) { app.innerHTML = `${encabezadoProgreso()}<div class="mensaje error">${escaparHtml(error.message)}</div>`; conectarPestanasProgreso(); return; }
   if (!sesiones || sesiones.length === 0) {
-    app.innerHTML = `${encabezado}<div class="vacio"><div class="icono-grande">📅</div><p>Todavía no tienes sesiones registradas.</p></div>`;
-    conectarExtra();
+    app.innerHTML = `${encabezadoProgreso()}<div class="vacio"><p>Todavía no tienes sesiones registradas. Cuando entrenes, aquí verás tu constancia.</p></div>`;
+    conectarPestanasProgreso();
     return;
   }
 
-  app.innerHTML = `${encabezado}<p class="subtitulo">Tus últimas sesiones (fuerza, core y cardio)</p><div id="hist-lista"></div>`;
-  conectarExtra();
+  const hoyStr = formatoFecha(new Date());
+  const r = resumenConstancia((todasFechas || sesiones).map((s) => s.fecha), hoyStr);
+  const maxSem = Math.max(1, ...r.semanas.map((x) => x.sesiones));
+  app.innerHTML = `
+    ${encabezadoProgreso()}
+    <div class="g3-stats">
+      <div><span>Este mes</span><b>${r.delMes}</b><small>día${r.delMes === 1 ? '' : 's'} entrenados</small></div>
+      <div><span>Racha</span><b>${r.racha}</b><small>semana${r.racha === 1 ? '' : 's'} seguidas</small></div>
+    </div>
+    <div class="g3-barras" role="img" aria-label="Días entrenados por semana, últimas 6 semanas">
+      ${r.semanas.map((x) => `<div class="g3-barra"><i style="height:${Math.round((x.sesiones / maxSem) * 100)}%"></i><span>${x.sesiones}</span></div>`).join('')}
+    </div>
+    <p class="g3-nota">Días entrenados por semana, últimas 6 semanas.</p>
+    <h3 class="g3-seccion">Recientes</h3>
+    <div id="hist-lista"></div>`;
+  conectarPestanasProgreso();
   const lista = document.getElementById('hist-lista');
 
-  const iconoPorTipo = { fuerza: '💪', abdominales: '🔥', cardio: '🏃' };
-  const nombrePorTipo = { fuerza: 'Fuerza', abdominales: 'Abdomen', cardio: 'Cardio' };
+  const nombrePorTipo = { fuerza: 'Fuerza', abdominales: 'Core', cardio: 'Cardio' };
 
   for (const s of sesiones) {
     const tipo = s.rutinas?.tipo || 'fuerza';
-    const etiquetaTipo = `${iconoPorTipo[tipo] || ''} ${nombrePorTipo[tipo] || tipo}`;
+    const etiquetaTipo = nombrePorTipo[tipo] || tipo;
 
     if (tipo === 'cardio') {
       // El detalle real de cardio vive en Extra → Cardio; aquí solo
@@ -2403,19 +2799,22 @@ async function renderHistorial() {
       const tarjeta = h(`
         <div class="tarjeta-sesion">
           <div class="fecha">${s.fecha} — ${etiquetaTipo}, Día ${s.dia ?? '?'}</div>
-          <div class="linea"><span>Detalle en “Actividad extra” → Cardio</span></div>
+          <div class="linea"><span>Detalle en Actividad extra → Cardio</span></div>
         </div>`);
       lista.appendChild(tarjeta);
       continue;
     }
 
+    const conLibreria = await asegurarColumnaLibreria();
     const { data: series } = await supabase
-      .from('series_registradas').select('ejercicio_id, peso_kg, repeticiones, ejercicios(nombre)')
+      .from('series_registradas')
+      .select(`ejercicio_id, ${conLibreria ? 'libreria_ejercicio_id, ' : ''}peso_kg, repeticiones, ejercicios(nombre)`)
       .eq('sesion_id', s.id);
+    if ((series || []).some((x) => x.libreria_ejercicio_id)) await cargarLibreria();
 
     const porEjercicio = {};
     for (const serie of series || []) {
-      const nombre = serie.ejercicios?.nombre || serie.ejercicio_id;
+      const nombre = nombreEjercicio(serie);
       porEjercicio[nombre] = (porEjercicio[nombre] || 0) + 1;
     }
 
@@ -2448,18 +2847,17 @@ async function renderExtra() {
   app.innerHTML = '';
   app.appendChild(h(`
     <div>
-      <button type="button" class="g2-back" id="extra-volver">‹ Historial</button>
-      <h1 class="titulo">Actividad extra</h1>
-      <p class="subtitulo">Cardio, abdomen, escalada — independiente de tu rutina de fuerza</p>
+      ${encabezadoProgreso()}
+      <p class="subtitulo">Registra lo que hiciste fuera de tus planes: cardio, abdomen, escalada…</p>
       <div class="chip-grid" id="extra-tipos"></div>
       <div id="extra-form"></div>
       <div id="extra-mensaje"></div>
       <button class="boton-primario" id="extra-guardar">Guardar</button>
-      <h2 class="titulo" style="font-size:16px;margin-top:26px;margin-bottom:10px">Historial</h2>
+      <h3 class="g3-seccion">Registrado</h3>
       <div id="extra-lista"><div class="pantalla-carga"><div class="spinner"></div></div></div>
     </div>`));
 
-  document.getElementById('extra-volver').onclick = () => irAPantalla('historial');
+  conectarPestanasProgreso();
   const tiposDiv = document.getElementById('extra-tipos');
   function pintarTipos() {
     tiposDiv.innerHTML = TIPOS_EXTRA.map((t) =>
@@ -2568,6 +2966,20 @@ async function cargarListaExtra() {
 // =========================================================================
 // Peso corporal en el tiempo
 // =========================================================================
+function renderPeso() {
+  app.innerHTML = '';
+  app.appendChild(h(`
+    <div>
+      ${encabezadoProgreso()}
+      <p class="subtitulo">Tu peso en el tiempo, independiente del peso que usas en la rutina.</p>
+      <div id="peso-form"></div>
+      <div id="peso-grafica"></div>
+      <div id="peso-lista" class="tarjeta-sesion"></div>
+    </div>`));
+  conectarPestanasProgreso();
+  renderPesoCorporal();
+}
+
 async function renderPesoCorporal() {
   const formDiv = document.getElementById('peso-form');
   if (!formDiv) return;
