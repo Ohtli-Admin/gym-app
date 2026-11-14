@@ -93,7 +93,7 @@ function nombreEjercicioLibreria(registro) {
 }
 
 // ---- Carga del snapshot (una vez por sesión) ----
-const libreria = { registros: null, conImagen: new Set(), error: null, cargando: null, filtros: { texto: '', grupo: null, equipo: null }, fichaId: null, limite: 40, espera: null };
+const libreria = { registros: null, conImagen: new Set(), error: null, cargando: null, filtros: { texto: '', grupo: null, equipo: null }, fichaId: null, limite: 40, espera: null, eligiendoPara: null };
 
 function cargarLibreria() {
   if (libreria.registros || libreria.cargando) return libreria.cargando || Promise.resolve();
@@ -138,10 +138,16 @@ function renderLibreria() {
   const f = libreria.filtros;
   const chips = (lista, campo) => lista.map((x) => `<button type="button" class="g3-tab ${f[campo] === x.id ? 'activo' : ''}" aria-pressed="${f[campo] === x.id}" data-filtro-${campo}="${x.id}">${x.etiqueta}</button>`).join('');
 
+  // Modo "elegir": se abrió desde el registro para reemplazar un ejercicio.
+  const eligiendo = libreria.eligiendoPara;
   app.innerHTML = '';
   app.appendChild(h(`
     <div>
       <header class="g3-header"><h1>Librería</h1></header>
+      ${eligiendo ? `<div class="g3-eligiendo">
+        <span>Elige con qué reemplazar <strong>${escaparHtml(nombreEjercicio(eligiendo))}</strong></span>
+        <button type="button" class="g3-link" id="lib-cancelar-eleccion">Cancelar</button>
+      </div>` : ''}
       <label class="g3-buscar">
         <span class="sr-only">Buscar ejercicio</span>
         <input type="search" id="lib-buscar" placeholder="Buscar ejercicio" value="${escaparHtml(f.texto)}" autocomplete="off" />
@@ -172,6 +178,14 @@ function renderLibreria() {
     mas.hidden = lista.length <= libreria.limite;
     mas.onclick = () => { libreria.limite += 40; pintarResultados(); };
   };
+
+  if (eligiendo) {
+    document.getElementById('lib-cancelar-eleccion').onclick = () => {
+      libreria.eligiendoPara = null;
+      estado.pantalla = 'registro';
+      render();
+    };
+  }
 
   const buscar = document.getElementById('lib-buscar');
   buscar.oninput = () => {
@@ -232,8 +246,23 @@ function renderFicha() {
           ${secundarios.length ? `<div><dt>También</dt><dd>${escaparHtml(secundarios.join(', '))}</dd></div>` : ''}
         </dl>` : ''}
       ${r.biomechanics?.movement_summary ? `<p>${escaparHtml(r.biomechanics.movement_summary)}</p>` : ''}
+      ${libreria.eligiendoPara ? `
+        <div id="ficha-mensaje"></div>
+        <button type="button" class="boton-primario" id="ficha-usar">Usar en mi rutina</button>
+        <p class="g3-nota">Reemplaza a ${escaparHtml(nombreEjercicio(libreria.eligiendoPara))} en este día. Tu historial anterior no se borra.</p>` : ''}
     </div>`));
   document.getElementById('ficha-volver').onclick = () => irAPantalla('libreria');
+  const usar = document.getElementById('ficha-usar');
+  if (usar) {
+    usar.onclick = async () => {
+      usar.disabled = true;
+      const error = await cambiarPorLibreria(r.exercise_id);
+      if (error) {
+        usar.disabled = false;
+        document.getElementById('ficha-mensaje').innerHTML = `<div class="mensaje error">No se pudo cambiar el ejercicio: ${escaparHtml(error.message)}</div>`;
+      }
+    };
+  }
 }
 
 // Para pruebas en Node (tools/libreria.test.mjs); en el navegador no hay `module`.
