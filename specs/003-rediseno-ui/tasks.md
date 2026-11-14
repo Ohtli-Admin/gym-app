@@ -18,5 +18,6 @@
 - [x] T021 Descanso a pantalla con ±15 s y alternativas
 
 ## US4 — Rutinas desde la librería (requiere aprobación)
-- [ ] T030 Migración aditiva propuesta (sin aplicar)
-- [ ] T031 Cambiar ejercicio desde la librería
+- [x] T030 Migración aditiva propuesta (sin aplicar): supabase/migrations/20261105120000_libreria_ejercicio_id.sql
+- [x] T031 Cambiar ejercicio desde la librería (aparece solo cuando la columna existe)
+- [ ] T032 Aplicar la migración en Supabase (requiere el sí del dueño)

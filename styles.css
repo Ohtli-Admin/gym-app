@@ -721,3 +721,9 @@ body.modo-enfoque #app { padding-bottom: 32px; }
 .g3-descanso-botones #descanso-saltar { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .g3-descanso-alt { width: 100%; max-width: 440px; text-align: left; margin-top: 10px; }
 .g3-descanso-alt .g3-fila { width: 100%; text-align: left; }
+
+/* ---- Rediseño 003 · US4: elegir un ejercicio de la librería ---- */
+.g3-eligiendo { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--surface-2); border: 1px solid var(--accent); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-size: 14px; }
+.g3-eligiendo .g3-link { padding: 0; color: var(--text); }
+.bloque-alternativas #alt-libreria { margin: 8px 0; }
+.g3-ficha #ficha-usar { margin-top: 18px; }
